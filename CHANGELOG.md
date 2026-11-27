@@ -7,6 +7,40 @@ Each release's section may carry both its release notes and the per-change entri
 recorded as the work landed; entries before 0.1.610 were given their version headings
 from the repository's history and the published release pages.
 
+## [0.1.698] — 2026-11-27
+
+Everything from the seven-area feature audit that was a real defect. Each fix landed with a test that fails
+without it.
+
+### Fixed
+- **Voice**: a barge-in no longer re-trips on every 30 ms block (it latched, so sustained speech over a reply
+  fired ~33 interrupts a second and truncated the captured question to its last ~1.2 s); a reply is only spoken
+  for the turn the loop actually sent; and stopping during the permission prompt can no longer tear down the
+  next conversation's microphone.
+- **Chat**: the transcript generation guard was dead code, so a resume that only re-decorated rows was treated as
+  unchanged and the caches served the old rows — the reason a picture sent from one device could fail to appear
+  on the other. Deletes in the already-paged half now disappear from the screen too.
+- **Composer**: Send claims the turn before its first await, so a second ⌘↩ during the truncate round trip can no
+  longer send the same message twice; the Mac can send an attachment-only message; bare `/status`, `/memory`,
+  `/model` and `/reasoning` are sent instead of re-matching the popup forever.
+- **Updates**: the iOS feed is read from the Pages document first (the release asset is only a fallback), so a
+  `hermeyd` release being "latest" no longer makes the check answer "not installable here"; host update "Try
+  again" works instead of POSTing and then reporting failure; a manual Check now surfaces its own card even when
+  it joins an in-flight launch check.
+- **Host**: a proxied pairing request can no longer mint a code (it could, through `tailscale serve`, for any
+  tailnet peer), the engine token is scrubbed from the dial log, a socket that races a revoke closes 4403, and
+  the update state is written before the binary is swapped so a failed write installs nothing.
+- **Attachments**: the byte cache is keyed by profile + reference, so two profiles with the same file name no
+  longer serve each other's bytes.
+- **Faces**: the desktop pet's drawn avatar animates again (it was frozen at the rest pose inside its host view),
+  a glass body shrinks under a mark instead of drawing full size behind it, and the glass silhouette follows the
+  pose instead of freezing at whatever pose first drew.
+
+### Changed
+- **`hermeyd` 0.8.28** — pairing, logging, revoke and update-state fixes; deploy with the app.
+- Documented, not fixed: Mac Sparkle installs cannot pass the signature check while the build is ad-hoc signed
+  (`docs/SECURITY_TASKS.md`).
+
 ## [0.1.697] — 2026-11-27
 
 ### Added
