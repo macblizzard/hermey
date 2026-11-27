@@ -30,6 +30,9 @@ final class SendDoubleFireTests: XCTestCase {
 
         model.requestEditAndResend(TranscriptEntry(id: "u1", rowID: 11, role: .user,
                                                    text: "old ask"))
+        XCTAssertEqual(model.pendingMessageAction?.rowID, 11)
+        // The confirmed verb is what links the composer to the row (`pendingEdit`).
+        await model.confirmMessageAction(model.pendingMessageAction)
         XCTAssertEqual(model.pendingEdit?.rowID, 11)
         model.draft = "new ask"
 
