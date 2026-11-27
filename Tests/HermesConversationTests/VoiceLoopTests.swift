@@ -182,6 +182,45 @@ final class VoiceVADTests: XCTestCase {
         }
         XCTAssertFalse(tripped)
     }
+
+    func testTheListeningLevelsFollowTheMeasuredFloor() {
+        // The desktop microphone: unchanged. A floor at the silence threshold still gives exactly
+        // the constant the engine used before — a 600 trigger and a 200 silence boundary.
+        let desktop = config.listeningLevels(floor: config.silenceRMS)
+        XCTAssertEqual(desktop.trigger, 600, accuracy: 0.001)
+        XCTAssertEqual(desktop.silence, config.silenceRMS, accuracy: 0.001)
+
+        // A phone: the same rules against its own floor. 20 RMS of room becomes a 120 trigger and a
+        // 20 silence boundary, instead of a 600 trigger and a 200 boundary it could never beat.
+        let phone = config.tunedForQuietInput().listeningLevels(floor: 20)
+        XCTAssertEqual(phone.trigger, 120, accuracy: 0.001)
+        XCTAssertEqual(phone.silence, 20, accuracy: 0.001)
+
+        // And it still tracks a louder room rather than being a constant: 3 × floor.
+        XCTAssertEqual(config.tunedForQuietInput().listeningLevels(floor: 300).trigger, 900,
+                       accuracy: 0.001)
+    }
+
+    func testAQuietStreamCanBecomeATurn() {
+        // The old fixed trigger: a stream that peaks at 300 RMS could never start an utterance.
+        var desktopGate = VoiceUtteranceGate()
+        XCTAssertEqual(desktopGate.feed(rms: 300, trigger: 600), .idle)
+
+        var gate = VoiceUtteranceGate()
+        let levels = config.tunedForQuietInput().listeningLevels(floor: 20)
+        XCTAssertEqual(gate.feed(rms: 300, trigger: levels.trigger, silence: levels.silence),
+                       .started)
+        for _ in 0..<(config.minimumUtteranceBlocks - 1) {
+            _ = gate.feed(rms: 300, trigger: levels.trigger, silence: levels.silence)
+        }
+        // The room's own floor is the quiet boundary, so 0.6 s of it ends the sentence rather than
+        // every single block counting as silence and cutting the speaker off mid-word.
+        var decision: VoiceUtteranceGate.Decision?
+        for _ in 0..<config.endpointSilenceBlocks {
+            decision = gate.feed(rms: 10, trigger: levels.trigger, silence: levels.silence)
+        }
+        XCTAssertEqual(decision, .ended(keep: true))
+    }
 }
 
 /// The container the device uploads. The host sniffs the mime type, so a malformed header is a

@@ -196,7 +196,9 @@ class Endpointing(unittest.TestCase):
         # about what counts as speech.
         for literal in ("1500", "1_500", "4000", "4_000", "0.45"):
             self.assertNotIn(literal, AUDIO, f"{literal} belongs in VoiceVADConfig")
-        self.assertIn("config.bargeMultiplier", AUDIO)
+        # The engine asks the config for its levels; the multipliers and bounds stay in one struct.
+        self.assertIn("config.listeningLevels(floor:", AUDIO)
+        self.assertIn("floor * bargeMultiplier", VAD)
         self.assertIn("config.endpointSilenceBlocks", AUDIO)
 
     def test_a_blip_is_not_a_turn(self) -> None:
@@ -286,7 +288,8 @@ class ThePlatforms(unittest.TestCase):
 
     def test_ios_configures_a_session_and_listens_for_interruptions(self) -> None:
         self.assertIn("setCategory(.playAndRecord", AUDIO)
-        self.assertIn("mode: .voiceChat", AUDIO)
+        self.assertIn("mode: mode", AUDIO)
+        self.assertIn("static let mode: AVAudioSession.Mode = .spokenAudio", AUDIO)
         self.assertIn("AVAudioSession.interruptionNotification", AUDIO)
         # The Mac has no session: the permission path is the other half of the platform split.
         self.assertIn("AVCaptureDevice.authorizationStatus(for: .audio)", AUDIO)
@@ -397,6 +400,110 @@ class OneControllerPerScreen(unittest.TestCase):
         for shell in (PHONE, MAC_BAR):
             self.assertIn("VoiceLog.shared.setSink", shell)
             self.assertIn('category: "voice"', shell)
+
+
+class TheSilentStream(unittest.TestCase):
+    """The phone opened the microphone, received buffers, and never heard a word.
+
+    The owner's log from 0.1.690 had `tap: installed`, `engine: running`, `first buffer: 4 800
+    frames at 48 000 Hz, 1 ch` — and then twenty seconds of him speaking without a single
+    `vad: speech started`. Three things were missing from that log and from the code: the *level* of
+    the blocks (silence and a quiet stream read identically), a session mode that a tap can hear
+    (the loop used `.voiceChat`, whose voice processing the dictation recorder beside it does not),
+    and a trigger that comes from the room the phone is actually in rather than from a desktop
+    microphone's constant. These pin all three.
+    """
+
+    @staticmethod
+    def code(text: str) -> str:
+        """The Swift with its comment lines removed — a doc comment is not a behaviour."""
+        return "\n".join(line for line in text.splitlines() if not line.strip().startswith("//"))
+
+    def test_the_first_blocks_report_their_level_and_peak(self) -> None:
+        body = swift_body(AUDIO, "private func noteBlockLevel(")
+        # int16 RMS and the peak sample, both, because 0/0 is a dead stream and 20/90 is a real one.
+        self.assertIn("vad: block \\(loggedBlockLevels) rms \\(Int(rms)) peak \\(peak)", body)
+        # Once only: capped by the config and counted, not printed every block for a whole call.
+        self.assertIn("guard loggedBlockLevels < config.diagnosticBlockCount else { return }", body)
+        self.assertIn("loggedBlockLevels += 1", body)
+        self.assertIn("diagnosticBlockCount: Int = 5", VAD)
+        # Called from the block path itself, so it measures exactly what the VAD is fed.
+        self.assertIn("noteBlockLevel(rms: rms, peak: peak)", AUDIO)
+        self.assertIn("let rms = (sum / Double(block.count)).squareRoot()", AUDIO)
+        # And it starts again on every start: a second conversation logs its own firsts.
+        self.assertIn("loggedBlockLevels = 0", swift_body(AUDIO, "private func beginStreaming()"))
+
+    def test_the_session_mode_is_chosen_and_logged_in_one_place(self) -> None:
+        # One place sets a category in the module, and the mode is named there, not inline.
+        self.assertEqual(self.code(AUDIO).count("setCategory("), 1)
+        self.assertIn("static let mode: AVAudioSession.Mode = .spokenAudio", self.code(AUDIO))
+        self.assertIn("mode: mode", self.code(AUDIO))
+        # The log carries the mode's name: "active" alone cannot answer which session was used.
+        self.assertIn('playAndRecord/\\(modeName)', AUDIO)
+        self.assertIn('static var modeName: String { "spokenAudio" }', AUDIO)
+
+    def test_no_voice_processing_mode_is_left_on_the_loop(self) -> None:
+        # `.voiceChat` is the mode that engages the system voice-processing input; it is the suspect
+        # for a tap that receives buffers nobody can hear, and it is gone from the executable code.
+        self.assertNotIn(".voiceChat", self.code(AUDIO))
+        # The mode the working dictation path uses is the mode the loop uses.
+        dictation = (ROOT / "Apps" / "HermesMobile" / "Views" / "VoiceController.swift").read_text(encoding="utf-8")
+        self.assertIn("mode: .spokenAudio", dictation)
+        # And the same category and options are kept: the speaker by default, Bluetooth allowed.
+        self.assertIn("options: [.defaultToSpeaker, .allowBluetooth]", AUDIO)
+
+    def test_the_mac_path_sets_no_mode_and_keeps_its_config(self) -> None:
+        activate = swift_body(AUDIO, "static func activate() throws")
+        # iOS-only, and the Mac branch is the else of that same condition.
+        ios = activate.index("#if os(iOS)")
+        category = activate.index("setCategory(")
+        mac = activate.index("#else")
+        self.assertLess(ios, category)
+        self.assertLess(category, mac)
+        self.assertIn("session: macOS has no audio session to activate", activate[mac:])
+        mac_code = "\n".join(line for line in activate[mac:].splitlines()
+                             if not line.strip().startswith("//"))
+        self.assertNotIn("setCategory", mac_code)
+        self.assertNotIn("mode:", mac_code)
+        # The engine's quiet-input tuning is iOS-only too: the Mac keeps the config it was handed.
+        init = swift_body(AUDIO, "public init(config: VoiceVADConfig = VoiceVADConfig())")
+        self.assertIn("tunedForQuietInput()", init)
+        self.assertIn("#else", init)
+        self.assertIn("self.config = config", init.split("#else", 1)[1])
+
+    def test_the_desktop_levels_are_numerically_unchanged(self) -> None:
+        """The Mac hears the same trigger and the same silence boundary as before this change."""
+        config = swift_body(VAD, "public struct VoiceVADConfig")
+        for field in ("silenceRMS: Double = 200", "bargeMultiplier: Double = 3.0",
+                      "measuredFloorMinimum: Double = 200", "listeningTriggerFloor: Double = 400"):
+            self.assertIn(field, config)
+        silence_rms, multiplier, floor_min, trigger_floor = 200.0, 3.0, 200.0, 400.0
+        for floor in range(200, 4001, 25):
+            # `max(floor * bargeMultiplier, silenceRMS * 2)` — the expression this replaced.
+            before = max(floor * multiplier, silence_rms * 2)
+            after = max(floor * multiplier, trigger_floor)
+            self.assertEqual(before, after, f"trigger changed for a desktop floor of {floor}")
+            self.assertEqual(min(silence_rms, max(floor, floor_min)), silence_rms)
+
+    def test_the_listening_trigger_follows_the_measured_floor(self) -> None:
+        # The engine asks the config for both levels from the floor it measured, and hands the
+        # silence boundary to the gate — the fixed `silenceRMS * 2` trigger is gone.
+        listening = AUDIO.split("case .listening:", 1)[1].split("case .thinking, .speaking:", 1)[0]
+        self.assertIn("config.listeningLevels(floor: detector.quietFloor)", listening)
+        self.assertIn("gate.feed(rms: rms, trigger: levels.trigger, silence: levels.silence)",
+                      listening)
+        self.assertNotIn("silenceRMS * 2", self.code(AUDIO))
+        self.assertNotIn("silenceRMS * 2", self.code(VAD))
+        # The rule is a multiplier over the floor, floored at a low absolute bound — not a constant.
+        levels = swift_body(VAD, "public func listeningLevels(floor: Double)")
+        self.assertIn("max(floor * bargeMultiplier, listeningTriggerFloor)", levels)
+        self.assertIn("min(silenceRMS, max(floor, measuredFloorMinimum))", levels)
+        # A phone's tuning moves the two *bounds* only: 8 RMS of floor is allowed, and 120 is the
+        # lowest trigger. The multipliers are untouched, so the trigger still tracks the room.
+        tuned = swift_body(VAD, "public func tunedForQuietInput()")
+        self.assertIn("copy.measuredFloorMinimum = 8", tuned)
+        self.assertIn("copy.listeningTriggerFloor = 120", tuned)
+        self.assertNotIn("bargeMultiplier", tuned)
 
 
 if __name__ == "__main__":

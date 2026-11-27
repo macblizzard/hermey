@@ -145,6 +145,9 @@ public final class VoiceCaptureEngine {
     private var sawFirstRawBuffer = false
     private var loggedConvertFailure = false
     private var loggedFirstSpeech = false
+    /// Diagnostics only: how many blocks have reported their level. Capped by
+    /// `config.diagnosticBlockCount`, reset by every start, so it is five lines per conversation.
+    private var loggedBlockLevels = 0
 
     #if os(iOS)
     private var interruptionObserver: NSObjectProtocol?
@@ -155,7 +158,14 @@ public final class VoiceCaptureEngine {
     #endif
 
     public init(config: VoiceVADConfig = VoiceVADConfig()) {
+        #if os(iOS)
+        // A phone's input is not the Mac's built-in microphone: the floor it reports for a quiet
+        // room is far lower, and the desktop constants made the listening trigger a fixed 600 that
+        // such a stream never reaches. iOS gets the same *rules* against its own measured floor.
+        self.config = config.tunedForQuietInput()
+        #else
         self.config = config
+        #endif
     }
 
     deinit {
@@ -255,6 +265,7 @@ public final class VoiceCaptureEngine {
         sawFirstRawBuffer = false
         loggedConvertFailure = false
         loggedFirstSpeech = false
+        loggedBlockLevels = 0
         lock.unlock()
 
         // 30 ms at the hardware rate: one block per VAD step, so no second buffer to lose.
@@ -386,6 +397,22 @@ public final class VoiceCaptureEngine {
         logFromAudioThread("first buffer: could not convert \(buffer.frameLength) frames at \(Int(buffer.format.sampleRate)) Hz")
     }
 
+    /// The first blocks of a stream, measured. Five lines, once per start.
+    ///
+    /// This is the line that separates the two failures that both read as "nothing happens": a
+    /// stream of zeros (0 RMS, 0 peak) is a conversion or a route with no microphone behind it, and
+    /// a stream of 1–50 is a real but quiet stream whose trigger was written for a desktop
+    /// microphone. Nothing else in the log can tell those apart, which is why it is measured before
+    /// any threshold is compared against it.
+    ///
+    /// Called with the lock held, like the rest of `process(block:)`; the log call hops to the main
+    /// actor so the audio thread never touches a sink.
+    private func noteBlockLevel(rms: Double, peak: Int) {
+        guard loggedBlockLevels < config.diagnosticBlockCount else { return }
+        loggedBlockLevels += 1
+        logFromAudioThread("vad: block \(loggedBlockLevels) rms \(Int(rms)) peak \(peak)")
+    }
+
     private func convert(_ buffer: AVAudioPCMBuffer,
                          to target: AVAudioFormat,
                          with converter: AVAudioConverter) -> AVAudioPCMBuffer? {
@@ -411,11 +438,14 @@ public final class VoiceCaptureEngine {
         // int16 RMS, the domain every threshold in `VoiceVADConfig` is written in.
         var samples = [Int16](repeating: 0, count: block.count)
         var sum = 0.0
+        var peak = 0
         for index in block.indices {
             let clamped = min(1, max(-1, block[index]))
             let sample = Int16(clamped * 32_767)
             samples[index] = sample
             sum += Double(sample) * Double(sample)
+            let magnitude = Swift.abs(Int(sample))
+            if magnitude > peak { peak = magnitude }
         }
         let rms = (sum / Double(block.count)).squareRoot()
 
@@ -425,16 +455,17 @@ public final class VoiceCaptureEngine {
         defer { lock.unlock() }
         guard isRunning else { return }
         blockCount += 1
+        noteBlockLevel(rms: rms, peak: peak)
         preRoll.append(samples)
         if preRoll.count > config.preRollBlocks { preRoll.removeFirst() }
 
         switch phase {
         case .listening:
-            // The gate answers "has this person finished a sentence?"; its trigger is the quiet
-            // floor learned before the loop opened speech, raised the same way the host's
-            // generation phase raises it.
-            let trigger = max(detector.quietFloor * config.bargeMultiplier, config.silenceRMS * 2)
-            let decision = gate.feed(rms: rms, trigger: trigger)
+            // The gate answers "has this person finished a sentence?"; both of its levels come from
+            // the floor this device actually measured, so a phone whose room sits at 20 RMS is
+            // listened to at 120 rather than at a desktop microphone's fixed 600.
+            let levels = config.listeningLevels(floor: detector.quietFloor)
+            let decision = gate.feed(rms: rms, trigger: levels.trigger, silence: levels.silence)
             switch decision {
             case .started:
                 // Seed with the last 300 ms, which already contains this block, so the syllable
@@ -449,7 +480,7 @@ public final class VoiceCaptureEngine {
             case .idle:
                 if collecting {
                     collected += samples
-                    if rms >= trigger { voicedBlocks += 1 }
+                    if rms >= levels.trigger { voicedBlocks += 1 }
                 }
             case .ended(let keep):
                 if collecting { collected += samples }
@@ -479,7 +510,10 @@ public final class VoiceCaptureEngine {
                 events.append(.bargeIn(trip))
             } else if collecting {
                 collected += samples
-                quietRun = rms < config.silenceRMS ? quietRun + 1 : 0
+                // The same measured floor the listening phase endpoints against: a stream that is
+                // quiet but real must not be cut off by the desktop microphone's 200.
+                let levels = config.listeningLevels(floor: detector.quietFloor)
+                quietRun = rms < levels.silence ? quietRun + 1 : 0
                 if quietRun >= config.endpointSilenceBlocks || collected.count / config.framesPerBlock >= config.maximumUtteranceBlocks {
                     let audio = collected
                     collected = []
@@ -563,18 +597,38 @@ public final class VoiceCaptureEngine {
 
 /// The session underneath the loop, on the platform that has one.
 ///
-/// iOS: `.playAndRecord` with the `.voiceChat` mode, which is what enables the system echo
-/// canceller. That matters more here than anywhere else in the app — the microphone stays open
-/// while the speaker talks, and without AEC the reply would be captured and sent back as the user's
-/// own turn. macOS has no `AVAudioSession` and no system AEC, which is why the playback-phase
-/// trigger (`playbackMinimumTrigger`) and `VoicePolicy.isSelfEcho` exist on both platforms.
+/// iOS: `.playAndRecord` in the **`.spokenAudio`** mode — the one the dictation recorder beside this
+/// loop uses on the same phone, where the microphone is proven to work
+/// (`Apps/HermesMobile/Views/VoiceController.swift`).
+///
+/// It used to be `.voiceChat`, for the system echo canceller the loop believed it needed because
+/// the microphone stays open while the speaker talks. `.voiceChat` is not a hint: it engages the
+/// system voice-processing input (AEC/AGC) for the whole session, and a tap on `AVAudioEngine`'s
+/// input node on that route is a well-known way to receive a processed — or silent — stream. The
+/// owner's log was exactly that shape: tap installed, buffers arriving at 48 kHz, no conversion
+/// failure, and no VAD trigger for twenty seconds of speech.
+///
+/// AEC is not what keeps the loop from answering itself: the playback trigger
+/// (`playbackMinimumTrigger`, 1 500 RMS — far above speaker bleed) and `VoicePolicy.isSelfEcho`
+/// do, and macOS has run with neither `AVAudioSession` nor AEC since the loop shipped. This makes
+/// the phone behave like the Mac, which is the configuration known to work.
+///
+/// If speaker bleed ever does turn into self-turns while a reply is playing, the fix is a
+/// `.voiceChat` re-entry *for the speaking phase only*, here, in this one function — never a
+/// second place that sets a category.
 enum VoiceAudioSession {
+    /// The session mode, in one place and named, because the log has to say which one was used.
+    #if os(iOS)
+    static let mode: AVAudioSession.Mode = .spokenAudio
+    static var modeName: String { "spokenAudio" }
+    #endif
+
     static func activate() throws {
         #if os(iOS)
         let session = AVAudioSession.sharedInstance()
         do {
             try session.setCategory(.playAndRecord,
-                                    mode: .voiceChat,
+                                    mode: mode,
                                     options: [.defaultToSpeaker, .allowBluetooth])
             // 30 ms is the block the VAD reasons in; asking the hardware for it avoids a second copy.
             try? session.setPreferredIOBufferDuration(0.03)
@@ -588,11 +642,12 @@ enum VoiceAudioSession {
             VoiceLog.note("session: activate failed — \(why)")
             throw VoiceCaptureEngine.StartFailure.sessionFailed(why)
         }
-        VoiceLog.note("session: active — playAndRecord/voiceChat, speaker by default")
+        // The mode is in the line: a log that says only "active" cannot answer which of the two
+        // sessions this build used, and that is the whole question this change is about.
+        VoiceLog.note("session: active — playAndRecord/\(modeName), speaker by default")
         #else
-        // Nothing to activate: macOS has no `AVAudioSession`, and the AVCaptureDevice permission
-        // checked in `start()` is the whole gate. Said out loud so a log that stops after
-        // `permission:` is not mistaken for a session that never came back.
+        // Nothing to activate: macOS has no `AVAudioSession`. No mode is set, so nothing about the
+        // Mac's input route changes here — the category, the mode and the AEC all do not exist.
         VoiceLog.note("session: macOS has no audio session to activate")
         #endif
     }

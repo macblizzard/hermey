@@ -39,6 +39,18 @@ public struct VoiceVADConfig: Sendable, Equatable {
     public var majorityFraction: Double = 0.8
     /// The rolling floor window: ~3 s at 30 ms blocks, as the host's `deque(maxlen=100)`.
     public var floorWindowBlocks: Int = 100
+    /// The lowest a measured floor may be clamped to. 200 is `silenceRMS`, the desktop microphone's
+    /// threshold, and it is what every number here was tuned against. A phone's input is a quieter
+    /// instrument (see `tunedForQuietInput()`): clamping it to 200 is what made the listening
+    /// trigger a constant 600 no matter what the phone actually heard.
+    public var measuredFloorMinimum: Double = 200
+    /// The lowest the listening trigger may fall, whatever the floor is. `silenceRMS * 2` was this
+    /// bound under another name; it is a field so a quiet input can lower it without changing the
+    /// rule that the trigger is a multiple of the room.
+    public var listeningTriggerFloor: Double = 400
+    /// How many blocks report their own level at the head of a stream. Five is 150 ms: enough to
+    /// tell a silent tap from a quiet one, and short enough to be five lines in a pasted log.
+    public var diagnosticBlockCount: Int = 5
 
     public init() {}
 
@@ -53,6 +65,47 @@ public struct VoiceVADConfig: Sendable, Equatable {
     public var tripBlocks: Int { max(1, Int((Double(sustainedBlocks) * majorityFraction).rounded())) }
     /// Frames per block at 16 kHz.
     public var framesPerBlock: Int { Int(sampleRate * blockSeconds) }
+
+    /// The two levels the listening gate is held to, both read from the floor this room has.
+    ///
+    /// The trigger is the barge multiplier over the measured floor — the same arithmetic the
+    /// detector already uses while the speaker plays — floored at `listeningTriggerFloor`. "No
+    /// voice" is the floor itself, never above `silenceRMS`: on a phone whose floor is 20, an
+    /// endpointing threshold of 200 is satisfied by every block, so the gate would end every
+    /// utterance 0.6 s after it began and no turn could ever survive the collection.
+    public func listeningLevels(floor: Double) -> VoiceLevels {
+        VoiceLevels(trigger: max(floor * bargeMultiplier, listeningTriggerFloor),
+                    silence: min(silenceRMS, max(floor, measuredFloorMinimum)))
+    }
+
+    /// The same rules, calibrated for an input that is not a desktop microphone.
+    ///
+    /// A Mac's built-in mic sits in a quiet room at a few hundred RMS, which is why the floor was
+    /// allowed to bottom out at 200. A phone's input route — behind the receiver, behind the
+    /// playAndRecord category, and until now behind `.voiceChat`'s voice processing — reports one
+    /// to two orders of magnitude less for the same room. The *multipliers* are unchanged, so the
+    /// trigger still tracks whatever floor is measured; only the two absolute bounds move, and only
+    /// on iOS (the engine applies this; the Mac keeps the desktop constants exactly).
+    public func tunedForQuietInput() -> VoiceVADConfig {
+        var copy = self
+        copy.measuredFloorMinimum = 8
+        copy.listeningTriggerFloor = 120
+        return copy
+    }
+}
+
+/// The listening gate's trigger and its "this block is quiet" boundary, together.
+///
+/// They are one value because they come from one floor: a gate that tripped on the room and then
+/// endpointed against a louder constant would end the sentence it just heard.
+public struct VoiceLevels: Sendable, Equatable {
+    public let trigger: Double
+    public let silence: Double
+
+    public init(trigger: Double, silence: Double) {
+        self.trigger = trigger
+        self.silence = silence
+    }
 }
 
 /// Which side of the loop heard the speech, as `full_duplex_listen`'s `on_trigger(phase)` reports it.
@@ -87,7 +140,7 @@ public struct VoiceBargeDetector {
 
     public init(config: VoiceVADConfig = VoiceVADConfig()) {
         self.config = config
-        self.quietFloor = config.silenceRMS
+        self.quietFloor = config.measuredFloorMinimum
     }
 
     /// Consume one block. Returns the phase when speech tripped, `nil` otherwise.
@@ -95,13 +148,13 @@ public struct VoiceBargeDetector {
         if !isFloorLocked && !calibrate(rms: rms, playing: playing) { return nil }
         trackPlayback(playing)
         var trigger = max(quietFloor * config.bargeMultiplier,
-                          playing ? config.playbackMinimumTrigger : config.silenceRMS * 2)
+                          playing ? config.playbackMinimumTrigger : config.listeningTriggerFloor)
         trigger = min(trigger, config.triggerCeiling)
         if !playing && rms < trigger {
             // Ambient drift only: a block of speech must never raise the floor it has to beat.
             ambient.append(rms)
             if ambient.count > config.floorWindowBlocks { ambient.removeFirst() }
-            quietFloor = percentile90(ambient).clampedBelow(config.silenceRMS)
+            quietFloor = percentile90(ambient).clampedBelow(config.measuredFloorMinimum)
         }
         var above = rms >= trigger
         if above && graceRemaining > 0 {
@@ -134,7 +187,7 @@ public struct VoiceBargeDetector {
             if ambient.count > config.floorWindowBlocks { ambient.removeFirst() }
         }
         guard ambient.count >= config.calibrationBlocks || playing else { return false }
-        quietFloor = percentile90(ambient).clampedBelow(config.silenceRMS)
+        quietFloor = percentile90(ambient).clampedBelow(config.measuredFloorMinimum)
         isFloorLocked = true
         return true
     }
@@ -195,7 +248,10 @@ public struct VoiceUtteranceGate {
         quietRun = 0
     }
 
-    public mutating func feed(rms: Double, trigger: Double) -> Decision {
+    public mutating func feed(rms: Double, trigger: Double, silence: Double? = nil) -> Decision {
+        // The "no voice" boundary is the caller's, because it comes from the floor the caller
+        // measured; the desktop default is what it was before the two could differ.
+        let silenceRMS = silence ?? config.silenceRMS
         guard isCollecting else {
             guard rms >= trigger else { return .idle }
             isCollecting = true
@@ -206,7 +262,7 @@ public struct VoiceUtteranceGate {
         }
         blocks += 1
         if rms >= trigger { voiced += 1 }
-        quietRun = rms < config.silenceRMS ? quietRun + 1 : 0
+        quietRun = rms < silenceRMS ? quietRun + 1 : 0
         if quietRun >= config.endpointSilenceBlocks {
             return finish()
         }
@@ -226,7 +282,9 @@ public struct VoiceUtteranceGate {
 }
 
 private extension Double {
-    /// The floor is never allowed under the silence threshold: a window that flushed during an
+    /// The floor is never allowed under the configured minimum: a window that flushed during an
     /// inter-sentence pause would otherwise collapse toward zero and trip on the next sentence.
+    /// The minimum is the desktop microphone's `silenceRMS` by default and follows the input
+    /// (`measuredFloorMinimum`) where the input is quieter.
     func clampedBelow(_ minimum: Double) -> Double { Swift.max(self, minimum) }
 }
