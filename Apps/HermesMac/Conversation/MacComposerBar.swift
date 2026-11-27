@@ -1,6 +1,7 @@
 import AppKit
 import HermesAppKit
 import HermesKit
+import HermesVoice
 import HermeyUI
 import SwiftUI
 
@@ -22,6 +23,10 @@ struct MacComposerBar: View {
     /// microphone was pressed, and nothing outlives this bar.
     @StateObject private var voice = MacVoiceController()
 
+    /// The hands-free conversation. One per composer, because the microphone it opens belongs to
+    /// the conversation on screen — leaving this bar tears it down (`onDisappear`).
+    @StateObject private var loop = VoiceLoopController()
+
     private var interrupt: (() -> Void)? {
         model.isStreaming ? { store.interrupt() } : nil
     }
@@ -30,6 +35,12 @@ struct MacComposerBar: View {
     /// mint the fresh ticket each request needs, so the control stays dimmed rather than failing
     /// after the recording.
     private var canRecordVoice: Bool {
+        store.canTranscribeVoice && model.selectedSessionID != nil
+    }
+
+    /// The loop needs the same pairing (it mints a ticket per transcribe *and* per sentence it
+    /// speaks) and the same open session, because a turn has to be sent somewhere.
+    private var canStartVoiceMode: Bool {
         store.canTranscribeVoice && model.selectedSessionID != nil
     }
 
@@ -71,6 +82,24 @@ struct MacComposerBar: View {
 
     var body: some View {
         VStack(spacing: 0) {
+            // A conversation that stopped takes the same strip: the loop has already closed the
+            // microphone by the time this shows, and the retry restarts it deliberately.
+            if let error = loop.errorMessage {
+                MacErrorStrip(message: error,
+                              onRetry: canStartVoiceMode ? { loop.start() } : nil,
+                              onDismiss: { loop.clearError() })
+            }
+
+            // The loop's own line, above the field: what it is doing, what it heard, and the way
+            // out. Only while it owns the microphone, or after it stopped on its own.
+            if loop.state.ownsMicrophone || loop.state == .failed {
+                VoiceLoopStatusBar(loop: loop)
+                    .frame(maxWidth: Geometry.conversationMeasure)
+                    .padding(.horizontal, Geometry.readingInset)
+                    .padding(.bottom, 6)
+                    .frame(maxWidth: .infinity)
+            }
+
             // A failed transcription uses the strip a failed send uses: one place to look when
             // the composer did not do what was asked. No retry — the audio is already gone.
             if let error = voice.errorMessage {
@@ -155,7 +184,18 @@ struct MacComposerBar: View {
                      micSystemImage: micGlyph,
                      micTint: voice.isRecording ? Tokens.danger : nil,
                      micAccessibilityLabel: micLabel,
-                     isMicEnabled: canRecordVoice && !voice.isBusy,
+                     // One listener. While the conversation owns the microphone, hold-to-talk is
+                     // disabled rather than ignored: two taps on one input device is a feedback
+                     // loop, not a feature.
+                     isMicEnabled: canRecordVoice && !voice.isBusy && !loop.isActive,
+                     showsVoiceMode: true,
+                     voiceModeSystemImage: loop.state.glyph,
+                     voiceModeTint: loop.isActive ? Tokens.accentText : nil,
+                     voiceModeAccessibilityLabel: loop.isActive
+                        ? "End the voice conversation"
+                        : "Start a hands-free voice conversation",
+                     isVoiceModeEnabled: canStartVoiceMode,
+                     onVoiceMode: { toggleVoiceMode() },
                      hint: hint,
                      // The session's own facts, inside the composer: which model answers, how full
                      // its context is, and the door to the one picker the Mac already has. Both
@@ -202,12 +242,31 @@ struct MacComposerBar: View {
         // No canvas strip: the transcript runs under the capsule and fades into it. The pane owns
         // the fade and the height measurement, because the transcript needs both.
         .onAppear { wireVoice() }
-        // A re-pair must not leave the controller minting tickets for the old host.
-        .onChange(of: store.pairing) { _, _ in wireVoice() }
+        // A re-pair must not leave the controller minting tickets for the old host, and must not
+        // leave a conversation open against one that no longer exists.
+        .onChange(of: store.pairing) { _, _ in
+            loop.stop()
+            wireVoice()
+        }
         // The draft belongs to the session that was open when recording started, so leaving it
-        // drops the capture instead of typing into somebody else's message.
-        .onChange(of: model.selectedSessionID) { _, _ in voice.cancel() }
-        .onDisappear { voice.cancel() }
+        // drops the capture instead of typing into somebody else's message. The conversation goes
+        // with it: its next utterance would otherwise be sent to a conversation nobody is watching.
+        .onChange(of: model.selectedSessionID) { _, _ in
+            voice.cancel()
+            loop.noteConversationChanged()
+        }
+        // The host's completion, and the only thing that may make this window speak. The loop
+        // checks that the turn is one it sent; an interrupted or foreign turn is ignored there.
+        .onChange(of: model.lastCompletion) { _, completion in
+            guard let completion else { return }
+            loop.noteTurnCompleted(text: completion.text)
+        }
+        // Leaving the conversation closes the microphone. A capture that outlives its window keeps
+        // the input device indicator on with nothing reading it.
+        .onDisappear {
+            voice.cancel()
+            loop.stop()
+        }
         .sheet(isPresented: $showingCommandHelp) {
             HermesCommandsHelpSheet { command in
                 runCommand(command)
@@ -226,6 +285,31 @@ struct MacComposerBar: View {
             guard let store else { throw MacVoiceFailure.notConfigured }
             return try await store.transcribeVoice(audio, mimeType: mimeType)
         }
+        // The conversation's four moves, each the same call the manual controls make — no second
+        // transport, no second credential.
+        loop.wiring = VoiceLoopWiring(
+            transcribe: { [weak store] audio, mimeType in
+                guard let store else { throw MacVoiceFailure.notConfigured }
+                return try await store.transcribeVoice(audio, mimeType: mimeType)
+            },
+            synthesize: { [weak store] text in
+                guard let store else { throw MacVoiceFailure.notConfigured }
+                return try await store.synthesizeVoice(text)
+            },
+            sendTurn: { [model, weak store] text in
+                guard let store else { return }
+                // Appended, never replacing: words typed while the microphone was open belong to
+                // the same message.
+                let existing = model.draft.trimmingCharacters(in: .whitespacesAndNewlines)
+                model.draft = existing.isEmpty ? text : existing + " " + text
+                store.send()
+            },
+            interruptTurn: { [weak store] in store?.interrupt() },
+            canRun: { [weak store, model] in
+                guard let store else { return false }
+                return store.canTranscribeVoice && model.selectedSessionID != nil
+            }
+        )
         // Appended to the draft, never sent: the user reads the words before they leave the Mac.
         voice.transcriptSink = { text in
             let existing = model.draft
@@ -255,6 +339,19 @@ struct MacComposerBar: View {
         } else {
             voice.startRecording()
         }
+    }
+
+    /// One tap starts the conversation; the same tap (or a spoken "stop") ends it.
+    private func toggleVoiceMode() {
+        if loop.isActive {
+            loop.stop()
+            return
+        }
+        guard canStartVoiceMode else { return }
+        // Close the dictation recorder first: it holds its own capture on the same input, and a
+        // loop started underneath it would be the second listener on one microphone.
+        if voice.isRecording || voice.isBusy { voice.cancel() }
+        loop.start()
     }
 
     private var pendingAttachmentsBar: some View {
