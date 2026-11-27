@@ -163,6 +163,32 @@ final class VoiceVADTests: XCTestCase {
         XCTAssertEqual(phase, .playback)
     }
 
+    func testSustainedSpeechOverTheReplyTripsOnce() {
+        // A trip is a latch, not an edge. While he keeps talking, `recentAbove` stays saturated;
+        // without the latch every block re-fires `.bargeIn`, which in the engine re-seeds the
+        // collection from the pre-roll 33 times a second and truncates the question.
+        var detector = VoiceBargeDetector(config: config)
+        for _ in 0..<config.calibrationBlocks { _ = detector.feed(rms: 120, playing: false) }
+        for _ in 0..<30 { _ = detector.feed(rms: 900, playing: true) }
+
+        var trips = 0
+        for _ in 0..<100 {
+            if detector.feed(rms: 6_000, playing: true) != nil { trips += 1 }
+        }
+        XCTAssertEqual(trips, 1, "sustained speech re-fired the barge on every block")
+
+        // The same quiet run the collection endpoints against opens the latch: a new utterance a
+        // moment later is a new barge, not a swallowed one.
+        for _ in 0..<config.endpointSilenceBlocks {
+            XCTAssertNil(detector.feed(rms: 120, playing: true))
+        }
+        var again = 0
+        for _ in 0..<config.sustainedBlocks {
+            if detector.feed(rms: 6_000, playing: true) != nil { again += 1 }
+        }
+        XCTAssertEqual(again, 1, "a new utterance after quiet must still barge in")
+    }
+
     func testOneLoudBlockIsNotBargeIn() {
         var detector = VoiceBargeDetector(config: config)
         for _ in 0..<config.calibrationBlocks { _ = detector.feed(rms: 120, playing: false) }

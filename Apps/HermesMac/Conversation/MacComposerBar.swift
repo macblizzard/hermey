@@ -298,11 +298,12 @@ struct MacComposerBar: View {
             voice.cancel()
             loop.noteConversationChanged()
         }
-        // The host's completion, and the only thing that may make this window speak. The loop
-        // checks that the turn is one it sent; an interrupted or foreign turn is ignored there.
+        // The host's completion, and the only thing that may make this window speak. The session
+        // travels with it: the loop speaks only a completion that names the turn it sent, so an
+        // interrupted turn, a typed message or another window's reply cannot become this answer.
         .onChange(of: model.lastCompletion) { _, completion in
             guard let completion else { return }
-            loop.noteTurnCompleted(text: completion.text)
+            loop.noteTurnCompleted(session: completion.session, text: completion.text)
         }
         // Leaving the conversation closes the microphone. A capture that outlives its window keeps
         // the input device indicator on with nothing reading it.
@@ -348,12 +349,16 @@ struct MacComposerBar: View {
                 return try await store.synthesizeVoice(text)
             },
             sendTurn: { [model, weak store] text in
-                guard let store else { return }
+                guard let store else { return nil }
+                // Captured before the send: the completion this turn produces will name this
+                // session, and the loop speaks only a completion that matches it.
+                let session = model.selectedSessionID
                 // Appended, never replacing: words typed while the microphone was open belong to
                 // the same message.
                 let existing = model.draft.trimmingCharacters(in: .whitespacesAndNewlines)
                 model.draft = existing.isEmpty ? text : existing + " " + text
                 store.send()
+                return session
             },
             interruptTurn: { [weak store] in store?.interrupt() },
             canRun: { [weak store, model] in

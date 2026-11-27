@@ -108,11 +108,28 @@ class BargeIn(unittest.TestCase):
 
     def test_the_capture_keeps_rolling_from_the_pre_roll(self) -> None:
         # Speech is kept from its first syllable, not from the block that tripped the detector —
-        # `_capture_until_quiet` in the host's voice_mode.py.
+        # `_capture_until_quiet` in the host's voice_mode.py. The seed happens once, and only when
+        # no collection is already running: a sustained barge is one trip, not one per 30 ms block.
         armed = AUDIO.split("case .thinking, .speaking:", 1)[1].split("case .off, .starting, .failed:", 1)[0]
+        self.assertIn("if let trip, !collecting {", armed)
         self.assertIn("collected = preRoll.flatMap { $0 }", armed)
         self.assertIn("quietRun >= config.endpointSilenceBlocks", armed)
         self.assertIn("events.append(.bargeIn(trip))", armed)
+
+    def test_one_barge_trip_per_utterance(self) -> None:
+        # The detector latches at a trip and re-arms only on the quiet run the collection endpoints
+        # against. Without the latch, `recentAbove` stays saturated and every further block of
+        # sustained speech re-fires `.bargeIn` — 33 a second, each one re-seeding the collection
+        # from the pre-roll, which truncates the question to its last 1.2 s.
+        body = swift_body(VAD, "feed(rms: Double, playing: Bool)")
+        self.assertIn("if latched {", body)
+        self.assertIn("config.listeningLevels(floor: quietFloor).silence", body)
+        self.assertIn("latchQuietRun >= config.endpointSilenceBlocks", body)
+        self.assertIn("latched = false", body)
+        # Set on the trip itself, so the next block cannot report the same trip again.
+        trip_at = body.index("latched = true")
+        self.assertLess(body.index("guard above, recentAbove.filter"), trip_at)
+        self.assertIn("return playing ? .playback : .generation", body[trip_at:])
 
 
 class BargeInDuringAGeneration(unittest.TestCase):
@@ -126,13 +143,13 @@ class BargeInDuringAGeneration(unittest.TestCase):
 
     def test_the_cut_turns_reply_is_never_spoken(self) -> None:
         body = swift_body(CONTROLLER, "public func noteTurnCompleted")
-        branch = body.split("if interruptedTurn {", 1)[1].split("}", 1)[0]
+        branch = body.split("if interruptedTurn, session == interruptedSession {", 1)[1].split("}", 1)[0]
         self.assertNotIn("speakReply", branch)
         self.assertIn("interruptedTurn = false", branch)
 
     def test_the_sentence_spoken_over_it_is_sent_from_there(self) -> None:
         body = swift_body(CONTROLLER, "public func noteTurnCompleted")
-        branch = body.split("if interruptedTurn {", 1)[1].split("}", 1)[0]
+        branch = body.split("if interruptedTurn, session == interruptedSession {", 1)[1].split("}", 1)[0]
         self.assertIn("heldUtterance", branch)
         self.assertIn("deliver(held)", branch)
 
@@ -146,7 +163,76 @@ class BargeInDuringAGeneration(unittest.TestCase):
         self.assertIn("interruptGraceSeconds", CONTROLLER)
         body = swift_body(CONTROLLER, "private func startInterruptWatchdog()")
         self.assertIn("heldUtterance", body)
-        self.assertIn("deliver(held)", body)
+        self.assertIn("deliver(held, awaitingInterruptedCompletion: true)", body)
+        # The grace sends the held sentence but does not clear the latch: the cut turn's
+        # completion is still due, and speaking it as the new answer is the crossing.
+        self.assertIn("startLostInterruptWatchdog", body)
+        lost = swift_body(CONTROLLER, "private func startLostInterruptWatchdog")
+        self.assertIn("lostInterruptSeconds", lost)
+        self.assertIn("interruptedTurn = false", lost)
+
+
+class TheCompletionNamesItsTurn(unittest.TestCase):
+    """A completion is spoken only for the turn that asked for it.
+
+    `awaitingReply` used to be the whole identity: a late completion from a cut turn, a typed
+    message (the composer stays editable while the loop listens), or another window's session all
+    satisfied it and were read aloud as the loop's answer, while the real reply was dropped.
+    """
+
+    def test_both_shells_pass_the_session_through(self) -> None:
+        for shell in (MAC_BAR, PHONE):
+            self.assertIn("noteTurnCompleted(session: completion.session, text: completion.text)", shell)
+
+    def test_the_loop_compares_the_session_it_sent_to(self) -> None:
+        body = swift_body(CONTROLLER, "public func noteTurnCompleted")
+        self.assertIn("guard let session else {", body)
+        self.assertIn("state == .thinking, awaitingReply, session == sentSession", body)
+        self.assertIn("session == interruptedSession", body)
+        # A foreign completion neither speaks nor clears the interrupt: only the cut turn's own
+        # completion may do that.
+        self.assertLess(body.index("session == interruptedSession"), body.index("sentSession"))
+
+    def test_sendturn_reports_the_session_it_sent_to(self) -> None:
+        self.assertIn("public var sendTurn: (String) -> String?", CONTROLLER)
+        for shell in (MAC_BAR, PHONE):
+            self.assertIn("return session", shell)
+
+    def test_an_unidentified_turn_is_sent_but_not_spoken(self) -> None:
+        body = swift_body(CONTROLLER, "private func transcribe(")
+        self.assertIn("let identity = self.wiring.sendTurn(text)", body)
+        self.assertIn("guard identity != nil else {", body)
+        self.assertIn("self.awaitingReply = false", body)
+
+
+class AnAbandonedStart(unittest.TestCase):
+    """Stop while the permission prompt is up, then start again.
+
+    The old start's task resumed after the new one and stopped the *new* capture, leaving the UI
+    saying Listening over a dead microphone. The abandoned attempt must touch nothing it does not
+    own, and the engine needs its own epoch because the permission await is inside it.
+    """
+
+    def test_the_abandoned_branch_never_stops_the_capture(self) -> None:
+        body = swift_body(CONTROLLER, "public func start()")
+        dropped = body.split('VoiceLog.note("start: abandoned', 1)[1].split("return", 1)[0]
+        self.assertNotIn("capture.stop()", dropped)
+
+    def test_the_engine_checks_its_own_epoch_at_every_await(self) -> None:
+        body = swift_body(AUDIO, "public func start() async throws")
+        self.assertIn("let epoch = UUID()", body)
+        self.assertIn("startEpoch = epoch", body)
+        self.assertGreaterEqual(body.count("guard startEpoch == epoch else"), 2)
+        # One after the permission prompt, one after activation — the two await points.
+        self.assertLess(body.index("requestMicrophonePermission"),
+                        body.index("guard startEpoch == epoch else"))
+        self.assertLess(body.index("VoiceAudioSession.activate()"),
+                        body.rindex("guard startEpoch == epoch else"))
+
+    def test_stop_invalidates_an_in_flight_start(self) -> None:
+        body = swift_body(AUDIO, "public func stop()")
+        self.assertIn("startEpoch = UUID()", body)
+        self.assertLess(body.index("startEpoch = UUID()"), body.index("teardown()"))
 
 
 class Teardown(unittest.TestCase):
@@ -233,7 +319,7 @@ class Endpointing(unittest.TestCase):
 class Speaking(unittest.TestCase):
     def test_only_a_completed_turn_is_spoken(self) -> None:
         body = swift_body(CONTROLLER, "public func noteTurnCompleted")
-        self.assertIn("guard state == .thinking, awaitingReply else { return }", body)
+        self.assertIn("guard state == .thinking, awaitingReply, session == sentSession else { return }", body)
         self.assertIn("speakReply(", body)
         # And nothing else calls it: the streaming delta path cannot make the app talk.
         self.assertEqual(CONTROLLER.count("speakReply("), 2)  # the declaration and the one call
@@ -283,7 +369,7 @@ class Visibility(unittest.TestCase):
     def test_the_loop_is_wired_to_the_host_it_is_paired_with(self) -> None:
         for shell in (MAC_BAR, PHONE):
             self.assertIn("VoiceLoopWiring(", shell)
-            self.assertIn("noteTurnCompleted(text:", shell)
+            self.assertIn("noteTurnCompleted(session:", shell)
         # The Mac speaks through the same service the transcription uses, one ticket per request.
         mac_service = (ROOT / "Apps" / "HermesMac" / "Conversation" / "MacVoiceController.swift").read_text(encoding="utf-8")
         self.assertIn("func synthesize(text: String) async throws -> Data", mac_service)
