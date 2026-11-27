@@ -22,14 +22,14 @@
       "screenshots": [],
       "versions": [
         {
-          "version": "0.1.691",
-          "buildVersion": "691",
-          "date": "2026-11-27T10:08:36Z",
-          "localizedDescription": "iPhone voice fix: the hands-free loop now uses the same audio session mode as the dictation mic that works on your phone, tunes its listening floor for a quiet input, and logs block levels so a silent stream is visible. Plus a real hermeyd 0.8.24.",
-          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.691/Hermey-0.1.691-b691.ipa",
-          "size": 6308428,
+          "version": "0.1.692",
+          "buildVersion": "692",
+          "date": "2026-11-27T11:15:39Z",
+          "localizedDescription": "One voice control in the composer: tap talks hands-free, hold dictates. Settings > Shortcuts gains Option-Cmd-V (conversation) and Option-Cmd-D (dictate). The iPhone loop now ends a sentence instead of waiting forever, and the update prompt offers the newest build instead of the next one. hermeyd 0.8.25.",
+          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.692/Hermey-0.1.692-b692.ipa",
+          "size": 6325552,
           "minOSVersion": "17.0",
-          "sha256": "983936643b7eaeb680f8d1eb81ea95f4193bc81576bca32b0c5024c0c75f0f1f"
+          "sha256": "86dd12904d46f9cfc4f116bde43ffb3c33a4940bbfdbcbb3571b0cb241fe3fec"
         }
       ],
       "appPermissions": {
@@ -43,10 +43,10 @@
   ],
   "news": [
     {
-      "title": "Hermes 0.1.691 (691)",
-      "identifier": "hermes-0.1.691-691",
-      "caption": "iPhone voice fix: the hands-free loop now uses the same audio session mode as the dictation mic that works on your phone, tunes its listening floor for a quiet input, and logs block levels so a silent stream is visible. Plus a real hermeyd 0.8.24.",
-      "date": "2026-11-27T10:08:36Z",
+      "title": "Hermes 0.1.692 (692)",
+      "identifier": "hermes-0.1.692-692",
+      "caption": "One voice control in the composer: tap talks hands-free, hold dictates. Settings > Shortcuts gains Option-Cmd-V (conversation) and Option-Cmd-D (dictate). The iPhone loop now ends a sentence instead of waiting forever, and the update prompt offers the newest build instead of the next one. hermeyd 0.8.25.",
+      "date": "2026-11-27T11:15:39Z",
       "tintColor": "#9A9AA0"
     }
   ],
