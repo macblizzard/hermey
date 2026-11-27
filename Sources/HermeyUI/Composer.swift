@@ -83,6 +83,14 @@ public struct Composer: View {
     /// A picked slash command. Callers that own a native panel for a command handle it here; without
     /// one, the composer completes the command into the field and lets the user send it.
     private let onCommand: ((HermesCommand) -> Void)?
+    /// The actions this shell performs itself, so pressing Return on an exact bare verb runs it
+    /// instead of sending the word to the host. The set must name only what `onCommand` really
+    /// answers: a bare command the shell cannot act on (`/status`, `/memory`, and on the phone also
+    /// `/model` and `/reasoning`) has to fall through and be **sent** — an interception nobody
+    /// answers leaves the invocation in the field, the popup re-matches it, and every further
+    /// Return re-runs `choose` while the command never completes. Nil keeps the older rule of
+    /// intercepting every native action.
+    private let nativeActions: Set<HermesCommandAction>?
 
     /// The one audio control: a tap opens the hands-free conversation, a hold dictates.
     ///
@@ -155,6 +163,7 @@ public struct Composer: View {
                 attachPopoverPresented: Binding<Bool>? = nil,
                 attachPopoverContent: AnyView? = nil,
                 onCommand: ((HermesCommand) -> Void)? = nil,
+                nativeActions: Set<HermesCommandAction>? = nil,
                 focus: FocusState<Bool>.Binding? = nil) {
         _text = text
         self.floats = floats
@@ -174,6 +183,7 @@ public struct Composer: View {
         self.attachPopoverPresented = attachPopoverPresented
         self.attachPopoverContent = attachPopoverContent
         self.onCommand = onCommand
+        self.nativeActions = nativeActions
         self.externalFocus = focus
     }
 
@@ -807,11 +817,16 @@ public struct Composer: View {
     private func send() {
         guard canSend else { return }
         // Typing an exact native verb and pressing Return must run it, not send the word to the
-        // host. Prefixes still send as typed — that is not a completed command, it is a message.
+        // host — but only when this shell actually answers it: `onCommand` for a verb it does not
+        // perform leaves the invocation in the field, the popup re-matches it, and Return never
+        // sends. An exact bare command the shell cannot run falls through and is **sent**, and the
+        // host's answer arrives in this conversation. Prefixes still send as typed — that is not a
+        // completed command, it is a message.
         let typed = String(text.dropFirst()).lowercased()
         if text.hasPrefix("/"),
            let exact = commandMatches.first(where: { $0.name == typed }),
-           exact.action != .insertOnly {
+           exact.action != .insertOnly,
+           nativeActions?.contains(exact.action) ?? true {
             Haptics.selection()
             choose(exact)
             return

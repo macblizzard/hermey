@@ -370,10 +370,34 @@ public final class AppModel: ObservableObject {
     /// of the whole conversation; see `TranscriptSplices`.
     public private(set) var transcriptSplice: TranscriptSplice = .replaced
 
+    /// Bumped every time the transcript's rows are *replaced* in place — a resume's re-read of the
+    /// open conversation, an attachment-decoration pass, a cache paint with missing attachments
+    /// filled in. Ids alone cannot see such a rewrite: it can keep the count, the first id and the
+    /// last id, and a transcript classified `.unchanged` would leave every cache (`visibleTranscript`
+    /// and both shells' row caches) serving the old, undecorated rows forever — which is why a
+    /// picture sent from one device could fail to appear on the other after a paged resume.
+    public private(set) var transcriptGeneration: UInt64 = 0
+    /// What `transcriptDidChange` last saw, so the next change can tell a bump from the ordinary
+    /// appends and page loads that arrive in between without one.
+    private var transcriptGenerationSeen: UInt64 = 0
+
+    /// Write rows the model has just rewritten in place, and say so.
+    ///
+    /// Every replacement of the transcript — as opposed to a turn appending to its end or a page
+    /// landing in front of it — goes through this, so the bump and the assignment cannot drift apart
+    /// and no adopt site can quietly skip the generation.
+    private func replaceTranscript(_ entries: [TranscriptEntry]) {
+        transcriptGeneration &+= 1
+        transcript = entries
+    }
+
     /// Keeps the derived state in step with `transcript` in one place, so no call site has to
     /// remember which caches exist.
     private func transcriptDidChange(from old: [TranscriptEntry]) {
-        let splice = TranscriptSplices.detect(previous: old, entries: transcript)
+        let sameGeneration = transcriptGeneration == transcriptGenerationSeen
+        let splice = TranscriptSplices.detect(previous: old, entries: transcript,
+                                              sameGeneration: sameGeneration)
+        transcriptGenerationSeen = transcriptGeneration
         transcriptSplice = splice
         switch splice {
         case .appended(let count):
@@ -2045,7 +2069,7 @@ public final class AppModel: ObservableObject {
         // a synchronous per-row pass on the main actor at exactly the moment the reader is waiting
         // for the pane, which is the stutter this removed. The text is what must be there
         // immediately; a picture attached 20 ms later is invisible as a delay.
-        transcript = merged.entries
+        replaceTranscript(merged.entries)
         // The scroll-jump report in one line: a transcript whose *first* row changes is a
         // transcript the reader's position cannot survive, so say when it happened and what it was
         // replaced with. Without this the app can only say that the pane moved.
@@ -2081,7 +2105,10 @@ public final class AppModel: ObservableObject {
                   self.selectedSessionID == sessionID,
                   self.transcript.count == rows.count,
                   self.transcript.last?.id == rows.last?.id else { return }
-            self.transcript = decorated
+            // The only thing that changed is what the rows carry, not their ids — exactly the
+            // rewrite ids cannot see. Bump the generation, or both caches would keep serving the
+            // undecorated rows and a sent picture would never appear.
+            self.replaceTranscript(decorated)
         }
     }
 
@@ -2125,7 +2152,7 @@ public final class AppModel: ObservableObject {
         ClientLog.note("restored \(snapshot.entries.count) cached rows for \(botID)",
                        level: .info, category: "cache")
         selectedSessionID = snapshot.sessionID
-        transcript = snapshot.entries
+        replaceTranscript(snapshot.entries)
         transcriptOwner = botID
         earlierCursor = snapshot.earlierCursor
         historyTotal = snapshot.historyTotal
@@ -2541,8 +2568,10 @@ public final class AppModel: ObservableObject {
         let decorated = await SentAttachmentVault.decorated(cached.messages, sessionID: id)
         if let owner, !mayOwn(owner, writing: "a cached transcript") { return false }
         selectedSessionID = id
-        transcript = decorated
-        if let index { transcript = index.attachMissing(to: transcript) }
+        replaceTranscript(decorated)
+        // The same rewrite ids cannot see: the paint fills in what a transcript without the vault
+        // lacks, keeping every id exactly where it was.
+        if let index { replaceTranscript(index.attachMissing(to: transcript)) }
         transcriptOwner = owner
         earlierCursor = cached.cursor
         historyTotal = cached.total
@@ -2586,7 +2615,9 @@ public final class AppModel: ObservableObject {
         // Paint what this process already knows before touching the network: a long chat costs the
         // host ~4 s to resume, and an empty pane for those seconds reads as "the app is broken".
         if let cached = recentTranscripts[id] {
-            transcript = SentAttachmentVault.decorate(cached.entries, sessionID: id)
+            // The remembered page may differ from the host's rows only in what it carries — the
+            // vault's decorations on top of ids the host re-sends verbatim — so it is a rewrite.
+            replaceTranscript(SentAttachmentVault.decorate(cached.entries, sessionID: id))
             earlierCursor = cached.earlierCursor
             historyTotal = cached.total
         } else {
@@ -2989,6 +3020,12 @@ public final class AppModel: ObservableObject {
             ClientLog.note("retired message \(rowID) in \(session): \(result.retired) row(s), "
                            + "\(result.displayCount) left", level: .info, category: "session")
             lastSendError = nil
+            // The host has moved the row out of the display set; take it off the screen now rather
+            // than leaving it to the resume. `TranscriptPaging.merge` joins at the incoming page's
+            // first row and keeps everything the app already held above that join, so a message in
+            // the older, already-paged half would survive the re-read and stay drawn until a full
+            // reload — while the host's database was already right.
+            transcript.removeAll { $0.rowID == rowID }
             await reloadAfterRetire()
         } catch {
             // The host's own sentence: "still answering — wait for the turn to finish", or "no such
@@ -3036,9 +3073,16 @@ public final class AppModel: ObservableObject {
         // to send, and refusing it here made "attach a file, tap send" look like a dead button.
         guard let sid = selectedSessionID, !sending,
               !text.isEmpty || !pendingAttachments.isEmpty else { return }
+        // Claim the turn **synchronously**, before the first await. The edit below (and the
+        // attachment upload) each take a round trip, and a second Send or ⌘↩ that arrives while
+        // `sending` is still false re-enters this method and submits the same message twice.
+        // `defer` releases the claim on every exit path, including the refusals that return early
+        // with the draft restored.
+        sending = true
+        defer { sending = false }
         // An edit in progress retires the old message — and everything painted after it — **before**
         // this turn is sent, so the model is fed one ask and one answer. It runs before the draft is
-        // cleared and before `sending` is set: a refusal here leaves the words exactly where they are
+        // cleared: a refusal here leaves the words exactly where they are
         // ("If truncation fails, the text stays in the composer and nothing is lost"), and the owner
         // can send again or give up without retyping anything.
         if let edit = pendingEdit, edit.session == sid {
@@ -3047,6 +3091,13 @@ public final class AppModel: ObservableObject {
                                                       session: edit.session,
                                                       fromMessageID: edit.rowID)
                 pendingEdit = nil
+                // The host has retired this row and everything painted after it; drop them from
+                // the screen here rather than waiting for the resume to do it. `TranscriptPaging.merge`
+                // joins at the incoming page's first row and keeps everything above it, so a retired
+                // row in the older, already-paged half would survive the re-read and stay drawn.
+                if let start = transcript.firstIndex(where: { $0.rowID == edit.rowID }) {
+                    transcript.removeSubrange(start...)
+                }
                 // The route closed the engine's live copy, so a resume is what puts this conversation
                 // back on the socket with the retired rows gone — and what the prompt below needs in
                 // order to have a session to be submitted into.
@@ -3081,7 +3132,7 @@ public final class AppModel: ObservableObject {
                            imageData: attachment.isImage ? attachment.data : nil,
                            size: attachment.data.count)
         }
-        sending = true
+        // The turn was claimed at entry; `defer` releases it however this ends.
         lastSendError = nil
         draft = ""
         if let bot = selectedBotID { recordActivity(for: bot) }
@@ -3104,7 +3155,6 @@ public final class AppModel: ObservableObject {
                 }
                 pendingAttachments = []
             } catch {
-                sending = false
                 lastSendError = error.localizedDescription
                 ClientLog.note("send with attachments failed: \(error.localizedDescription)",
                                level: .error, category: "send")
@@ -3174,7 +3224,6 @@ public final class AppModel: ObservableObject {
                         let delivery = try await client.submit(session: reopened, text: outgoing)
                         if isMidTurn { announce(delivery) }
                         draftSessionIDs.remove(reopened)
-                        sending = false
                         return
                     } catch {
                         ClientLog.note("re-send after re-resolving the Bot Chat failed too: "
@@ -3191,7 +3240,6 @@ public final class AppModel: ObservableObject {
             // empties the transcript, and a blind `removeLast()` would trap on it.
             transcript.removeAll { $0.id == optimisticID }
         }
-        sending = false
     }
 
     /// Say what the host did with a mid-turn message, in the composer's own words, then let it go.
@@ -6813,6 +6861,7 @@ public final class AppModel: ObservableObject {
     /// see re-filtered.
     public var visibleTranscript: [TranscriptEntry] {
         visibleTranscriptCache.rows(transcript,
+                                    generation: transcriptGeneration,
                                     showToolCalls: showToolCalls,
                                     showReasoning: showReasoning)
     }

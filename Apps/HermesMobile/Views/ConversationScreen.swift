@@ -916,7 +916,11 @@ struct ConversationScreen: View {
             // changed. `id: \.id` states the identity the reader's position depends on — the
             // message's own id, never its index — so a page landing above the reader cannot
             // re-key a row and throw away its parsed markdown.
+            // `generation` carries the model's transcript rewrite counter: an attachment pass
+            // rewrites rows in place, keeping every id, and only the generation tells the cache to
+            // regroup rather than serve the undecorated rows it already holds.
             ForEach(rowCache.rows(model.visibleTranscript,
+                                  generation: model.transcriptGeneration,
                                   appending: model.visibleLiveToolEntries,
                                   running: runningToolIDs), id: \.id) { row in
                 switch row {
@@ -1264,6 +1268,10 @@ struct ConversationScreen: View {
                          }
                      },
                      onInterrupt: { Task { await model.interrupt() } },
+                     // Exactly what `runCommand` answers, and nothing more: `/status`, `/memory`,
+                     // and this screen's `/model` and `/reasoning` are not native here, so they
+                     // fall through and are sent to the host rather than dead-looping in the field.
+                     nativeActions: [.help, .newSession, .resetConversation, .compact],
                      onCommand: runCommand,
                      // The caret belongs to this screen, so the tap that arrives before the
                      // conversation has opened can be honoured the moment it has.

@@ -285,6 +285,7 @@ struct TranscriptScroll: View {
     /// folded run.
     private var groupedRows: [TranscriptRow] {
         rowCache.rows(model.visibleTranscript,
+                      generation: model.transcriptGeneration,
                       appending: model.visibleLiveToolEntries,
                       running: Set(model.visibleLiveToolEntries.map(\.id)))
     }
