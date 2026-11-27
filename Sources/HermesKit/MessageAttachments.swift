@@ -47,6 +47,18 @@ public struct MessageAttachment: Identifiable, Hashable, Sendable {
         self.size = size
     }
 
+    /// The cache key this reference resolves to *inside one profile*: the fingerprint of the
+    /// reference itself (`AttachmentLocation`), never the bare file name.
+    ///
+    /// Two profiles may legitimately hold the same name (`attachments/notes.pdf` on `cody` and on
+    /// `jason` are different files the host serves from different folders), and a re-attached
+    /// document can be rewritten under a name a previous send already cached. Keying the byte
+    /// caches by this — the same key the upload path writes with — keeps one profile's bytes from
+    /// ever answering another's, and makes a re-attach a different entry instead of a stale one.
+    public func cacheKey(profile: String) -> String {
+        AttachmentLocation.reference(profile: profile, path: path).cacheKey
+    }
+
     public var isImage: Bool { kind == .image }
     public var kindOfFile: AttachmentKind { AttachmentKind(name: name) }
 }
@@ -306,31 +318,36 @@ public enum AttachmentByteCache {
 
 /// Resolve one attachment's bytes, in the order that costs the least.
 ///
-///  1. the in-memory cache, keyed by the reference;
-///  2. the on-disk cache, keyed by the file name the host chose (survives a relaunch, works
-///     offline once the picture has been seen);
+///  1. the in-memory cache, keyed by the reference's fingerprint *for this profile*;
+///  2. the on-disk cache, keyed the same way (survives a relaunch, works offline once the picture
+///     has been seen);
 ///  3. the host, through the route the app already uses for a file it opens — the caller supplies
 ///     it, because the model that holds the device bearer belongs to the app.
 ///
-/// Whatever arrives is written to both caches, so the next render is a memory read.
+/// Every key is `attachment.cacheKey(profile:)` — the fingerprint of profile + reference — and not
+/// the bare file name: the same name may exist in two profiles (`AttachmentLocation.cacheKey`
+/// fingerprints for exactly that reason), and a re-attached file with the same name must not
+/// answer with the previous send's bytes. The upload path writes its copy under this same key, so
+/// a relaunch still renders what this device has already seen without a host round trip.
 public enum AttachmentReferenceReader {
 
     public static func bytes(for attachment: MessageAttachment,
                              profile: String,
                              fetch: (AttachmentLocation) async throws -> URL) async throws -> Data {
-        if let hit = AttachmentByteCache.data(for: attachment.id) { return hit }
-        if let disk = AttachmentImageStore.data(named: attachment.name) {
-            AttachmentByteCache.store(disk, for: attachment.id)
+        let key = attachment.cacheKey(profile: profile)
+        if let hit = AttachmentByteCache.data(for: key) { return hit }
+        if let disk = AttachmentImageStore.data(named: key) {
+            AttachmentByteCache.store(disk, for: key)
             return disk
         }
         let url = try await fetch(.reference(profile: profile, path: attachment.path))
         guard let data = try? Data(contentsOf: url), !data.isEmpty else {
             throw AttachmentFetchError.cacheUnavailable
         }
-        AttachmentByteCache.store(data, for: attachment.id)
+        AttachmentByteCache.store(data, for: key)
         // The disk half is the existing cache, so a relaunch and an offline open both work without
         // a second store to keep honest.
-        AttachmentImageStore.save(data, as: attachment.name)
+        AttachmentImageStore.save(data, as: key)
         return data
     }
 }

@@ -511,7 +511,11 @@ struct MobileTranscriptRow: View {
                         profile: attachmentProfile,
                         // Memory only: a disk read here would be one in a body pass, and a body pass
                         // happens 25 times a second while a turn streams.
-                        cachedBytes: { reference in AttachmentByteCache.data(for: reference.id) },
+                        // Same key the reader (and the upload path) store under: profile + reference,
+                        // never the bare name — two profiles may hold the same file name.
+                        cachedBytes: { reference in
+                            AttachmentByteCache.data(for: reference.cacheKey(profile: attachmentProfile))
+                        },
                         load: loadReference,
                         onOpenImage: showPicture,
                         onOpenFile: showFile,

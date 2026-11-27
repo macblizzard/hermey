@@ -43,7 +43,7 @@
 
 use crate::engine_client::engine_url;
 use crate::office;
-use crate::routes::AppState;
+use crate::routes::{AppState, PROXY_HEADERS};
 use crate::transfers;
 use axum::body::Bytes;
 use axum::extract::{ConnectInfo, Path, State};
@@ -112,9 +112,8 @@ const PET_WINDOW: i64 = 60;
 /// A document key owned by `bridge_routes` (`DOC_DISABLED`); the toggle writes it, this reads it.
 const DOC_DISABLED: &str = "bots_disabled";
 
-/// A proxy makes every caller look like 127.0.0.1, and this route writes into a real bot
-/// conversation — the same header list `device_auth.py` refuses.
-const PROXY_HEADERS: [&str; 4] = ["forwarded", "x-forwarded-for", "x-real-ip", "tailscale-user-login"];
+// The proxy-header list (`PROXY_HEADERS`) is imported from `routes`: pairing guards on the same
+// list, because a proxy makes every caller look like 127.0.0.1 to both.
 
 fn bad(status: StatusCode, msg: impl Into<String>) -> Fail {
     (status, Json(json!({ "detail": msg.into() })))

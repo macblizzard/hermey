@@ -180,8 +180,11 @@ class NothingWasRegressed(unittest.TestCase):
     def test_images_still_travel_the_way_they_did(self) -> None:
         self.assertIn('"image.attach_bytes"', ATTACH_RPC)
         self.assertIn('"file.attach"', ATTACH_RPC)
-        self.assertIn('AttachmentImageStore.save(attachment.data, as: receipt.path ?? attachment.name)',
-                      read(KIT / ".." / "HermesAppKit" / "AppModel.swift"))
+        # The send still caches the host's reply the same way, only keyed by the reference's
+        # fingerprint now (`AttachmentLocation.cacheKey`, see test_attachment_references.py).
+        model = read(KIT / ".." / "HermesAppKit" / "AppModel.swift")
+        self.assertIn("AttachmentImageStore.save(attachment.data, as: cacheLocation.cacheKey)", model)
+        self.assertIn("AttachmentLocation.reference(profile: sendProfile, path: $0)", model)
 
     def test_the_phone_still_sends_a_file_as_a_data_url_over_the_same_rpc(self) -> None:
         self.assertIn('return ("file.attach"', PAYLOAD)

@@ -541,7 +541,7 @@ dependencies = [
 
 [[package]]
 name = "hermeyd"
-version = "0.8.27"
+version = "0.8.28"
 dependencies = [
  "axum",
  "base64 0.22.1",

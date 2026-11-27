@@ -3096,11 +3096,17 @@ public final class AppModel: ObservableObject {
                                                           data: attachment.data,
                                                           isImage: attachment.isImage)
                     if let ref = receipt.refText { refs.append(ref) }
-                    // Every file is cached under the name the host quoted back: a picture draws
-                    // from it, a PDF or a spreadsheet opens from it without a round trip, and the
-                    // transcript's own `@image:`/`@file:` references find the bytes again after a
-                    // relaunch — the one handle both sides agree on, with no guessing by text.
-                    AttachmentImageStore.save(attachment.data, as: receipt.path ?? attachment.name)
+                    // Every file is cached under the key the transcript's later read uses — the
+                    // fingerprint of profile + reference (`AttachmentLocation.cacheKey`), never the
+                    // bare name: two profiles may hold the same name, and a re-attach with the same
+                    // name must not serve this send's stale bytes. The receipt's `path` is exactly
+                    // what the row will quote (`@image:<path>`), so this write and the reader's
+                    // lookup agree without a host round trip after a relaunch.
+                    let sendProfile = selectedBotID ?? ""
+                    let cacheLocation = receipt.path.map {
+                        AttachmentLocation.reference(profile: sendProfile, path: $0)
+                    } ?? AttachmentLocation.uploaded(profile: sendProfile, name: attachment.name)
+                    AttachmentImageStore.save(attachment.data, as: cacheLocation.cacheKey)
                 }
                 pendingAttachments = []
             } catch {
