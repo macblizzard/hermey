@@ -83,8 +83,17 @@ public struct HostUpdateTracker: Equatable, Sendable {
 
     /// The press was accepted: 202 and a target. The row leaves "available" at once — the button is
     /// gone before the first byte arrives, so a second press is impossible.
+    ///
+    /// A row showing a *failure* may be pressed again, and the retry is the only way the update ever
+    /// installs: `refused` and `timedOut` settle their row, and without this the "Try again" button
+    /// that row itself offers was dead code — it POSTed to the host (which did install), then
+    /// returned here, discarded the ack and left the row saying "Update failed". So a settled
+    /// *failure* is reopened by this press; a settled *success* is not, and only `dismiss` clears
+    /// that one.
     public mutating func pressed(_ ack: HostUpdateAck, at now: Date) {
-        guard !settled else { return }
+        guard !settled || update?.phase.isFailure == true else { return }
+        // The failed attempt is over; this opens a new one, with no memory of it.
+        settled = false
         target = ack.target
         pressedAt = now
         let current = update?.current ?? ""
@@ -128,6 +137,9 @@ public struct HostUpdateTracker: Equatable, Sendable {
         pressedAt = nil
     }
 
+    /// The press is over. `pressedAt = nil` closes it — no later check can complete an attempt
+    /// nobody is pressing — and `settled` freezes the row's words until it is dismissed or, for a
+    /// failure, pressed again.
     private mutating func settle(_ phase: HostUpdate.Phase,
                                  current: String,
                                  latest: String,

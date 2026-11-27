@@ -50,11 +50,19 @@ class TheCheckerIsSharedAndReadsTheFeed(unittest.TestCase):
                           f"AvailableUpdate must carry {field!r}")
 
     def test_it_reads_the_altstore_source_and_its_fallback(self):
+        # The Pages document is the app feed and always current (every publish rewrites it); the
+        # release asset cannot be relied on: `/releases/latest` is whichever release GitHub marks
+        # latest, and a `hermeyd-v*` release carries no `altstore.json` asset at all — a 404 that
+        # used to be the primary source, with the real feed never tried.
+        self.assertIn("https://macblizzard.github.io/hermey-downloads/altstore.json", self.source)
         self.assertIn("https://github.com/macblizzard/hermey/releases/latest/download/altstore.json", self.source)
         self.assertIn("https://macblizzard.github.io/hermey-downloads/mac.json", self.source)
-        # The fallback is only reached after the first fails, so the source must be tried first.
-        order = self.source.index("altstore.json") - self.source.index("mac.json")
-        self.assertGreater(order, 0, "altstore.json is the primary source and must be declared first")
+        # The ordered list is what the read walks, and it starts with the Pages document.
+        feeds = self.source.split("static var feedURLs: [URL] {", 1)[1].split("}", 1)[0]
+        order = [feeds.index(name) for name in
+                 ("Self.sourceURL", "Self.releaseSourceURL", "Self.fallbackSourceURL")]
+        self.assertEqual(order, sorted(order),
+                         "the Pages app feed answers first; the release asset and mac.json fall back")
 
     def test_both_published_shapes_are_understood(self):
         # altstore.json is a document of documents; mac.json is a single object. A parser that only
@@ -124,15 +132,16 @@ class ComparisonsAndRememberedDecisions(unittest.TestCase):
 
     def test_a_manual_check_always_reaches_the_feed(self):
         # The throttle lives inside `if !manual {`, so a manual press never enters it, and a press
-        # that lands on a check already in flight is folded into it instead of vanishing.
+        # that lands on a check already in flight joins it — with the press's own presentation, not
+        # silently inheriting the in-flight check's host.
         self.assertIn("if !manual {", self.check)
-        self.assertIn('Self.note("update: check(source=manual) skipped=in-flight")', self.check)
-        gate = block(self.check, 'Self.note("update: check(source=manual) skipped=in-flight")',
-                     'Self.note("update: launch check')
+        self.assertIn('Self.note("update: check(source=manual) joins=in-flight")', self.check)
+        gate = block(self.check, "guard !isChecking else {", 'Self.note("update: launch check')
         self.assertIn("return", gate)
+        self.assertIn("manualJoinsCheck = true", gate)
         manual_path = block(self.check, "let read = await latestUpdate()", "let settled = settle(")
         self.assertIn("if !manual {", manual_path)
-        self.assertIn("let settled = settle(read, installed: installed, manual: manual)", self.check)
+        self.assertIn("let settled = settle(read, installed: installed, manual: asked)", self.check)
 
     def test_only_a_strictly_newer_build_is_offered(self):
         self.assertIn("guard found.build > installed else", self.settle)
@@ -427,7 +436,10 @@ class ACheckThatFindsNothingSaysWhy(unittest.TestCase):
     def test_a_manual_press_with_a_newer_document_cannot_end_in_up_to_date(self):
         # The manual path reaches `settle` with `manual: true`, and the only early exits it can take
         # before the offer are about the document itself (uninstallable / not newer), never history.
-        self.assertIn("let settled = settle(read, installed: installed, manual: manual)", self.check)
+        # A joined press rides on `asked`; the refusal set inside `settle` is unchanged and never
+        # keyed on the check's source.
+        self.assertIn("let settled = settle(read, installed: installed, manual: asked)", self.check)
+        self.assertIn("let asked = manual || manualJoinsCheck", self.check)
         manual_refusals = [line for line in self.settle.splitlines()
                            if "return" in line and "manual" in line]
         self.assertEqual(manual_refusals, [],
@@ -449,8 +461,10 @@ class ACheckThatFindsNothingSaysWhy(unittest.TestCase):
         self.assertNotIn("if let available = updates.available", self.row)
 
     def test_a_press_during_a_check_is_folded_into_it_instead_of_vanishing(self):
-        # The row shows "Checking…" while a check runs, and the press is named in the log rather than
-        # returning with nothing said.
+        # The row shows "Checking…" while a check runs, and the press joins it by name rather than
+        # returning with nothing said — and its answer is presented where the press was made.
         self.assertIn('if updates.isChecking { return "Checking…" }', self.row)
-        self.assertIn('Self.note("update: check(source=manual) skipped=in-flight")', self.check)
-        self.assertNotIn('Self.note("update: check(source=manual)")\n            return', self.check)
+        self.assertIn('Self.note("update: check(source=manual) joins=in-flight")', self.check)
+        self.assertIn("manualJoinsCheck = true", self.check)
+        self.assertIn('source += "+manual"', self.check,
+                      "the one measurement line names the folded press too")

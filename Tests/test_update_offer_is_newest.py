@@ -100,9 +100,25 @@ class TheOfferIsTheDocumentsMaximumBuild(unittest.TestCase):
         self.assertIn("let update = Self.update(in: fetched.data)", self.latest)
         self.assertIn("last.with(advertised: update, installable: update)", self.latest)
         self.assertNotIn("first(where:", self.latest)
-        # An entry this platform cannot install is skipped, never swapped for an older one.
+        # A document whose newest entry is not installable here is skipped, never offered — but only
+        # after `update(in:)` has had its chance to prefer an installable entry from the same
+        # document, so this guard now means "no installable entry at all".
         self.assertIn("guard Self.isInstallable(update.url) else {", self.latest)
         self.assertIn("continue", self.latest)
+
+    def test_a_document_with_an_installable_entry_is_not_disqualified_by_its_newest_row(self):
+        # The newest row of a document can be an artifact this platform cannot use while an
+        # installable one sits below it; refusing the whole document for that row turned a feed with
+        # an update into "no document at all". The parser therefore reduces the *installable*
+        # entries first, and only a document with none of them falls through to the plain maximum.
+        self.assertIn("if let installable = candidates", self.parse)
+        preference = self.parse.split("if let installable = candidates", 1)[1].split("return newest", 1)[0]
+        self.assertIn(".filter({ Self.isInstallable($0.url) })", preference)
+        self.assertIn(".max(by: { $0.build < $1.build })", preference)
+        self.assertIn("return installable", preference)
+        self.assertGreater(preference.index("return installable"),
+                           preference.index(".filter("),
+                           "the filter feeds the reduction, and its result is the offer")
 
 
 class TheStoredBuildIsARecordNeverAVeto(unittest.TestCase):

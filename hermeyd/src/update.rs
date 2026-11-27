@@ -29,11 +29,13 @@
 //! 1. download `<base>/<tag>/hermeyd-<platform>` and `<base>/<tag>/SHA256SUMS`;
 //! 2. look the asset's digest up in `SHA256SUMS` (no entry = refuse) and compare it to the bytes;
 //!    a mismatch deletes the download and installs nothing;
-//! 3. copy the running binary to `hermeyd.prev` beside it;
-//! 4. `rename` the verified download over the binary (atomic on one filesystem — which is why the
+//! 3. write [`STATE_FILE`] as `pending` — before anything is swapped, because the record *is* the
+//!    rollback mechanism: a boot that runs the new build must find it, and a write that fails
+//!    refuses the swap rather than leaving the new binary on disk with nothing to roll back to;
+//! 4. copy the running binary to `hermeyd.prev` beside it;
+//! 5. `rename` the verified download over the binary (atomic on one filesystem — which is why the
 //!    staged file is written next to the binary, not in the state dir);
-//! 5. write [`STATE_FILE`] as `pending`, audit, and `exit(0)`. `Restart=always` brings the new
-//!    build up.
+//! 6. audit, and `exit(0)`. `Restart=always` brings the new build up.
 //!
 //! ## Rollback, which must never need the network
 //!
@@ -607,12 +609,31 @@ fn replace_file(new: &Path, bin: &Path) -> Result<(), String> {
     })
 }
 
-/// Keep the running build beside the new one, then put the new one in place.
+/// Record the pending install, keep the running build beside the new one, then put the new one in
+/// place.
 ///
-/// The backup comes first on purpose: a failure between the two leaves the host on its current
-/// binary with a `.prev` it does not need, which is recoverable; the other order can leave no
-/// previous build at all.
-fn install(cfg: &Config) -> Result<(), StepError> {
+/// The record comes **first**: `update-state.json` is the whole of the rollback mechanism, so a
+/// boot that runs the new binary must always find a record with it. Writing it after the swap —
+/// the shape this had — left a failed state write with the new binary on disk and no record: no
+/// attempt counting, no `.prev` restore, and a broken build crash-looping with nothing to roll
+/// back to. A failed write here refuses the swap instead, so the host keeps running the build it
+/// has and the press is reported as failed rather than half-done. The backup comes next on
+/// purpose: a failure between the two leaves the host on its current binary with a `.prev` it does
+/// not need, which is recoverable; the other order can leave no previous build at all.
+fn install(cfg: &Config, target: &str) -> Result<(), StepError> {
+    let record = UpdateState {
+        target: target.to_string(),
+        previous: crate::VERSION.to_string(),
+        state: PENDING.to_string(),
+        attempts: 0,
+        started_at: now_secs(),
+    };
+    write_state(&cfg.state_path(), &record).map_err(|e| {
+        StepError::new(
+            "state_write_failed",
+            format!("cannot record the pending install at {}: {e}", cfg.state_path().display()),
+        )
+    })?;
     std::fs::copy(&cfg.bin, cfg.prev()).map_err(|e| {
         StepError::new(
             "backup_failed",
@@ -709,7 +730,7 @@ async fn stage_and_install(
         let _ = std::fs::remove_file(&staged);
         return Err(StepError::new("stage_failed", e));
     }
-    if let Err(failure) = install(cfg) {
+    if let Err(failure) = install(cfg, &release.version) {
         let _ = std::fs::remove_file(&staged);
         return Err(failure);
     }
@@ -727,42 +748,21 @@ async fn apply(cfg: Config, release: Release, device: String, audit: Arc<AuditLo
     set_progress(None);
     match outcome {
         Ok(()) => {
-            let record = UpdateState {
-                target: release.version.clone(),
-                previous: crate::VERSION.to_string(),
-                state: PENDING.to_string(),
-                attempts: 0,
-                started_at: now_secs(),
-            };
-            match write_state(&cfg.state_path(), &record) {
-                Ok(()) => {
-                    audit.emit(
-                        "update.installed",
-                        Event { device: Some(&device), outcome: Some("ok"), ..Default::default() },
-                    );
-                    eprintln!(
-                        "self-update: {} installed over {}; exiting for systemd to start it",
-                        release.version,
-                        crate::VERSION
-                    );
-                    // The new binary is in place and the record says so. `Restart=always` is what
-                    // makes this a restart rather than a stop.
-                    std::process::exit(0);
-                }
-                Err(why) => {
-                    APPLYING.store(false, AtomicOrdering::SeqCst);
-                    let _ = std::fs::remove_file(cfg.staged());
-                    audit.emit(
-                        "update.failed",
-                        Event {
-                            device: Some(&device),
-                            reason: Some("state_write_failed"),
-                            ..Default::default()
-                        },
-                    );
-                    eprintln!("self-update: installed the file but could not record it: {why}");
-                }
-            }
+            // The pending record was written by `install`, before the swap: a boot that runs the
+            // new binary can always read it, and a failed write never got as far as swapping — that
+            // press was refused as `state_write_failed` with the old build still running.
+            audit.emit(
+                "update.installed",
+                Event { device: Some(&device), outcome: Some("ok"), ..Default::default() },
+            );
+            eprintln!(
+                "self-update: {} installed over {}; exiting for systemd to start it",
+                release.version,
+                crate::VERSION
+            );
+            // The new binary is in place and the record says so. `Restart=always` is what
+            // makes this a restart rather than a stop.
+            std::process::exit(0);
         }
         Err(failure) => {
             APPLYING.store(false, AtomicOrdering::SeqCst);
@@ -1215,6 +1215,14 @@ cccc  hermes-genui-plugin.tar.gz\n";
         assert_eq!(std::fs::read(&cfg.bin).unwrap(), new_bytes, "the binary is the download");
         assert_eq!(std::fs::read(cfg.prev()).unwrap(), b"OLD-BUILD", ".prev is the old build");
         assert!(!cfg.staged().exists(), "the staged file is gone after the rename");
+        // The record a boot after this one reads, written before the swap — a running build with
+        // no `pending` record is a build nothing will roll back.
+        let record = read_state(&cfg.state_path())
+            .expect("the install must have recorded itself before swapping the binary");
+        assert_eq!(record.target, "0.4.0");
+        assert_eq!(record.previous, crate::VERSION, "the running build, not the feed's");
+        assert_eq!(record.state, PENDING);
+        assert_eq!(record.attempts, 0);
         // Both halves of the release were fetched. Asked as two `any`s rather than one exact
         // sequence: a keep-alive connection that resets mid-body can make `reqwest` retry a request,
         // and how many times a byte-identical GET was sent says nothing about correctness.
@@ -1275,6 +1283,44 @@ cccc  hermes-genui-plugin.tar.gz\n";
             .expect_err("an unverifiable release is refused");
         assert_eq!(failure.reason, "no_checksum");
         assert_eq!(std::fs::read(&cfg.bin).unwrap(), b"OLD-BUILD");
+    }
+
+    /// The record is the whole of the rollback mechanism, so the one thing an install must never
+    /// do is swap the binary when it cannot record the attempt. `update-state.json.tmp` is made a
+    /// *directory*: every write to the state file's own temp name fails, without needing a
+    /// read-only filesystem (this suite may run as root, which ignores permissions).
+    #[test]
+    fn a_state_write_failure_installs_nothing() {
+        let new_bytes = b"NEW-BUILD".to_vec();
+        let sums = format!("{}  hermeyd-linux-x86_64\n", sha256_hex(&new_bytes));
+        let server = FakeRelease::start(vec![
+            ("/dl/hermeyd-v0.4.0/hermeyd-linux-x86_64", 200, new_bytes),
+            ("/dl/hermeyd-v0.4.0/SHA256SUMS", 200, sums.into_bytes()),
+        ]);
+        let (cfg, _dir) = host("statefail", &format!("{}/dl", server.base));
+        std::fs::create_dir_all(cfg.state_path().with_extension("json.tmp"))
+            .expect("block the state write");
+        let release = Release {
+            version: "0.4.0".to_string(),
+            tag: "hermeyd-v0.4.0".to_string(),
+            notes_url: String::new(),
+        };
+        let runtime = tokio::runtime::Runtime::new().unwrap();
+        let failure = runtime
+            .block_on(stage_and_install(&http_client(), &cfg, &release))
+            .expect_err("an unrecordable install must be refused");
+        assert_eq!(failure.reason, "state_write_failed");
+        assert_eq!(
+            std::fs::read(&cfg.bin).unwrap(),
+            b"OLD-BUILD",
+            "the running binary was never swapped"
+        );
+        assert!(!cfg.prev().exists(), "no backup was written either");
+        assert!(!cfg.staged().exists(), "the download was deleted");
+        assert!(
+            read_state(&cfg.state_path()).is_none(),
+            "no record, no install: the host is exactly as it was"
+        );
     }
 
     // ---- the state machine ----------------------------------------------------------

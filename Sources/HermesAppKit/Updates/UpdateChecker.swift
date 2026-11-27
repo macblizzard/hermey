@@ -109,11 +109,29 @@ public final class UpdateChecker: ObservableObject {
 
     /// The AltStore-style source GitHub Pages serves. The iOS entry is the truth for this platform:
     /// it names the IPA, while `mac.json` names the DMG.
-    public static let sourceURL = URL(string: "https://github.com/macblizzard/hermey/releases/latest/download/altstore.json")
+    ///
+    /// This is the app feed and it is always current: every publish rewrites this one file, from one
+    /// measurement. It is tried first because the release asset it once pointed at cannot be: GitHub
+    /// marks *whichever* release is newest as `latest`, every publish also cuts a `hermeyd-v*`
+    /// release for the host, and that release carries no `altstore.json` asset at all — so `latest`
+    /// frequently answered 404 and the real feed was never tried.
+    public static let sourceURL = URL(string: "https://macblizzard.github.io/hermey-downloads/altstore.json")
 
-    /// The notifier feed, used only when the AltStore document cannot be fetched or parsed. Both are
-    /// written by one publish from one measurement, so either carries the same build.
+    /// The release asset, kept as a fallback. It is the same document when the newest release *is*
+    /// an app release; when a `hermeyd-v*` release is `latest` it answers 404 and the check moves on.
+    public static let releaseSourceURL = URL(string: "https://github.com/macblizzard/hermey/releases/latest/download/altstore.json")
+
+    /// The notifier feed, last. Both documents are written by one publish from one measurement, so
+    /// either carries the same build — but on iOS the `.dmg` this names is refused by
+    /// `isInstallable`, so it can only end a check with a stated reason, never with an offer.
     public static let fallbackSourceURL = URL(string: "https://macblizzard.github.io/hermey-downloads/mac.json")
+
+    /// The documents a check reads, in order. The Pages feed is first because it is the only URL
+    /// that is always the app feed; the release asset and the Mac document are fallbacks, and the
+    /// check says in its log which one answered.
+    static var feedURLs: [URL] {
+        [Self.sourceURL, Self.releaseSourceURL, Self.fallbackSourceURL].compactMap { $0 }
+    }
 
     /// The update to offer, or nil. Cleared when the feed stops advertising something newer than
     /// this build, so a stale card cannot survive a downgrade.
@@ -163,6 +181,19 @@ public final class UpdateChecker: ObservableObject {
     /// refused by a check made yesterday, and the foreground entry a second later is one request
     /// rather than two.
     private var lastUnsolicitedCheck: Date?
+
+    /// A manual press that landed while a check was already in flight.
+    ///
+    /// The press does not need its own round trip — the check running is reading the same document
+    /// seconds old — but it does change how that answer is presented, which is what made "Check now"
+    /// look dead: the launch check settled with `promptHost = .root`, so the card it offered was
+    /// asked for by the shell and queued *behind* the Settings sheet the press came from. Consumed
+    /// by the one `check` that is running: the answer is presented over Settings and an earlier
+    /// "Not now" for exactly this build does not swallow an answer the person just asked for. It is
+    /// cleared the moment it is read, and a manual press can only observe it between the in-flight
+    /// check's awaits, so the running check always consumes it — it cannot leak into a later
+    /// unsolicited check.
+    private var manualJoinsCheck = false
 
     private let defaults: UserDefaults
     private let session: URLSession
@@ -259,14 +290,20 @@ public final class UpdateChecker: ObservableObject {
     /// earlier session is a record, never a gate — a fresh document newer than the build running
     /// here is news, and no stored value may refuse it.
     public func check(manual: Bool = false, atLaunch: Bool = false) async {
-        let source = manual ? "manual" : (atLaunch ? "launch" : "foreground")
+        var source = manual ? "manual" : (atLaunch ? "launch" : "foreground")
 
         // Two triggers can fire within a second of each other (launch and the first foreground
         // notification); one round trip answers both.
         guard !isChecking else {
-            // A press that lands on a check already in flight is folded into it, not dropped in
-            // silence: the row is showing "Checking…", and the in-flight answer will settle it.
-            if manual { Self.note("update: check(source=manual) skipped=in-flight") }
+            if manual {
+                // A press that lands on a check already in flight joins it — not dropped, and not
+                // folded in silence: the answer in flight is about the same document, but the press
+                // changes how it is presented and which history it respects (see
+                // `manualJoinsCheck`). The row is showing "Checking…", and this check will settle
+                // it with the press's answer over the Settings sheet it came from.
+                manualJoinsCheck = true
+                Self.note("update: check(source=manual) joins=in-flight")
+            }
             return
         }
 
@@ -304,7 +341,15 @@ public final class UpdateChecker: ObservableObject {
         }
 
         let floor = highestOfferedBuild
-        let settled = settle(read, installed: installed, manual: manual)
+        // A manual press that joined this check rides on its answer: the join flag is consumed here,
+        // once, before the decision — the offer is presented over Settings and a recorded skip does
+        // not apply to it. `manual` alone still decides what the unsolicited check does.
+        let asked = manual || manualJoinsCheck
+        if manualJoinsCheck {
+            source += "+manual"
+            manualJoinsCheck = false
+        }
+        let settled = settle(read, installed: installed, manual: asked)
         outcome = settled.outcome
 
         // Exactly one measurement line per check: the source, URL, transport state, the build the
@@ -450,7 +495,7 @@ public final class UpdateChecker: ObservableObject {
     /// installable entry, so the caller can log one line for every check.
     private func latestUpdate() async -> FeedRead {
         var last = FeedRead.none
-        for url in [Self.sourceURL, Self.fallbackSourceURL].compactMap({ $0 }) {
+        for url in Self.feedURLs {
             do {
                 let fetched = try await fetch(url)
                 let read = FeedRead(url: url, state: fetched.state, status: fetched.status,
@@ -467,6 +512,8 @@ public final class UpdateChecker: ObservableObject {
                 // An entry this platform cannot install is not an update. The mac feed names a
                 // `.dmg`; handing that to a phone opened a disk image in Safari, which is what
                 // "it downloads the dmg instead of the ipa" was — the manifest, not the card.
+                // (`update(in:)` has already preferred an installable entry when the document
+                // carries one, so reaching this guard means the document has none to offer.)
                 guard Self.isInstallable(update.url) else {
                     print("[updates] \(url.lastPathComponent) advertises "
                           + "\(update.url.lastPathComponent) — not installable here")
@@ -477,6 +524,10 @@ public final class UpdateChecker: ObservableObject {
                     continue
                 }
                 last = last.with(advertised: update, installable: update)
+                // Name the document that answered, in its own line: three sources can carry the
+                // same build, and "which one did this phone read" has to be answerable from the log
+                // without matching the one measurement line below against a URL.
+                Self.note("update: answered by \(url.absoluteString) (\(fetched.state.rawValue))")
                 return last
             } catch {
                 last = FeedRead(url: url, state: .unreachable, status: nil, age: nil,
@@ -630,7 +681,23 @@ public final class UpdateChecker: ObservableObject {
                                        sha256: entry.sha256 ?? "",
                                        notes: entry.localizedDescription ?? "")
             }
-            if let newest = candidates.max(by: { $0.build < $1.build }) { return newest }
+            // The offer is the document's maximum build. Comfortably: reduced with `max`, so an
+            // intermediate version is never what comes back.
+            let newest = candidates.max(by: { $0.build < $1.build })
+            #if os(iOS)
+            // A document that carries an entry this platform can install is never disqualified by
+            // its *newest* entry being something else: the release notes once made the newest row a
+            // `.dmg` while an installable `.ipa` sat right below it, and refusing the whole document
+            // for the row this phone cannot use turned a feed with an update into "no document at
+            // all". The newest installable entry is the offer; only a document with no installable
+            // entry at all falls through to `newest`, which `latestUpdate` then refuses.
+            if let installable = candidates
+                .filter({ Self.isInstallable($0.url) })
+                .max(by: { $0.build < $1.build }) {
+                return installable
+            }
+            #endif
+            return newest
         }
 
         if let document = try? decoder.decode(MacDocument.self, from: data),

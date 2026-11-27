@@ -348,7 +348,15 @@ public struct HostUpdate: Equatable, Sendable {
         case restarting
         case updated(String)
         case rolledBack(String)
+        /// A press that did not install anything. The row offers "Try again" — and a settled one is
+        /// the only settled shape a new press may reopen.
         case failed(String)
+
+        /// Whether this phase is a failed attempt.
+        public var isFailure: Bool {
+            if case .failed = self { return true }
+            return false
+        }
     }
 
     /// What this host is running.
