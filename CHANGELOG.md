@@ -7,6 +7,21 @@ Each release's section may carry both its release notes and the per-change entri
 recorded as the work landed; entries before 0.1.610 were given their version headings
 from the repository's history and the published release pages.
 
+## [0.1.693] — 2026-11-27
+
+### Fixed
+- **The voice loop now finishes what you say.** The end-of-speech level was measured against an estimate of
+  the room taken from your own first words, so it could sit *above* your normal speaking voice and no sentence
+  ever ended. The room is now tracked continuously from quiet audio only, and the boundary is set below the
+  voice actually heard — 0.45 × the voiced average, floored at 60 — so a pause always ends the sentence.
+- **Stopping by hand keeps the sentence.** Tapping stop mid-sentence now transcribes and sends what was heard
+  instead of throwing it away, and a 20-second ceiling ends a runaway utterance.
+- **"Stop" is heard wherever the audio is transcribed.** The spoken stop phrase is tested first in the one
+  shared transcription path (pause, ceiling, manual stop) and sends nothing — before this it could only be
+  recognised after an utterance had ended, which on the phone never happened.
+- **The update feed is read from the release asset**, whose CDN keeps no 10-minute copy, so a fresh release is
+  visible immediately rather than after the GitHub Pages edge window.
+
 ## [0.1.692] — 2026-11-27
 
 ### Changed
