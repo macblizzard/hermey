@@ -107,8 +107,8 @@ class BareSlashCommandTests(unittest.TestCase):
 
     def test_both_shells_declare_exactly_what_runCommand_answers(self) -> None:
         self.assertIn("nativeActions: [.help, .newSession, .resetConversation, .compact,\n"
-                      "                                     .model, .reasoning],", MAC_BAR)
-        self.assertIn("nativeActions: [.help, .newSession, .resetConversation, .compact],", PHONE)
+                      "                                     .model, .reasoning]", MAC_BAR)
+        self.assertIn("nativeActions: [.help, .newSession, .resetConversation, .compact]", PHONE)
 
 
 class PagedHalfDeleteTests(unittest.TestCase):
