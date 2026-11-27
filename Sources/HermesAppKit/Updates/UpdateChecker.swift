@@ -56,19 +56,33 @@ public struct AvailableUpdate: Identifiable, Equatable, Sendable {
 ///
 /// ## Why the skip and the throttle live in `UserDefaults`
 ///
-/// Dismissal has to survive a relaunch — that is the entire promise of "Not now" — and a 24-hour
-/// throttle has to survive one too, or a phone that is opened and closed twenty times a day makes
-/// twenty feed requests. Both are two values, so they are stored beside the app's other preferences
-/// rather than in a file of their own.
+/// Dismissal has to survive a relaunch — that is the entire promise of "Not now". It is one value, so
+/// it is stored beside the app's other preferences rather than in a file of its own.
 ///
-/// ## Why the offer can never move backwards
+/// The *throttle* deliberately does not live there. A timestamp that outlives the app can only ever
+/// refuse the next thing the person does, and on this platform that next thing is almost always
+/// "open the app": iOS resumes far more often than it cold-starts, `scenePhase` goes `.active`
+/// without a launch, and a 24-hour gate on that path meant a build published at 12:44 stayed
+/// invisible at 18:00 on a device whose last check was 12:25 — the log held one `offer=none` line
+/// from before the publish and nothing after it. So the only bound left is a short one held in
+/// memory (`repeatCheckInterval`), which cannot outlive the session and therefore cannot silence a
+/// launch or a return to the front.
+///
+/// ## Why the offer can never move backwards, and can never be refused by history
 ///
 /// The feed is served by a CDN with a ten-minute cache, so a check in that window can see a document
 /// written before the newest build was published. That must not turn into a chain of installs —
 /// offer 583, install it, offer 584, install it — because each hop is a full signing cycle for the
 /// owner. Every check therefore fetches with the caches bypassed, treats a 304 as "the bytes I have
-/// are current" rather than "no update", offers the document's maximum build, and keeps the highest
-/// build ever shown as a floor. The stored floor may refuse a stale offer; it may never choose one.
+/// are current" rather than "no update", and offers the document's maximum build.
+///
+/// The earlier guard against that was a stored floor: the highest build ever offered, which could
+/// refuse a document older than it. It was removed. A stored number cannot tell a genuinely stale
+/// document from a feed that has *moved on*, and when it sat above the feed's newest build it
+/// silently refused real releases — a phone on 692 reading a document that said 693 and being told
+/// there was nothing, with no line anywhere saying why. What protects the screen now is only what is
+/// true at this moment: the document in hand, the build running, an explicit "Not now" for exactly
+/// that build, and a card already on screen that a stale copy must not retract.
 @MainActor
 public final class UpdateChecker: ObservableObject {
 
@@ -76,15 +90,22 @@ public final class UpdateChecker: ObservableObject {
     /// dismissal already recorded on a device.
     public enum DefaultsKey {
         public static let skippedBuild = "hermey.updates.skippedBuild"
+        /// When the last unsolicited check completed, across launches. Recorded for the log and for
+        /// any future background path; it is never what decides whether a launch asks.
         public static let lastCheck = "hermey.updates.lastCheck"
-        /// The highest build this device has already been shown. A floor for the offer, never its
-        /// source: `check` reads it only to discard an older document (see `highestOfferedBuild`).
+        /// The highest build this device has already been shown. Recorded for the log; it is never
+        /// compared against a document to refuse one (see `highestOfferedBuild`).
         public static let highestOfferedBuild = "hermey.updates.highestOfferedBuild"
     }
 
-    /// One unsolicited check a day. A manual check is never throttled: the person tapping the row
-    /// has already answered "do you want to ask now".
-    public static let minimumCheckInterval: TimeInterval = 24 * 60 * 60
+    /// The only throttle left: fifteen minutes between unsolicited checks *inside one run of the app*.
+    ///
+    /// It exists for one thing — a foreground toggle loop, which a person switching apps can drive
+    /// dozens of times a minute — and it is deliberately not persisted, so a check from an earlier
+    /// session can never refuse the launch or the foreground entry that follows it. A launch and a
+    /// return to the front are user-visible events and are always asked. A manual check is never
+    /// throttled at all: the person tapping the row has already answered "do you want to ask now".
+    public static let repeatCheckInterval: TimeInterval = 15 * 60
 
     /// The AltStore-style source GitHub Pages serves. The iOS entry is the truth for this platform:
     /// it names the IPA, while `mac.json` names the DMG.
@@ -131,7 +152,17 @@ public final class UpdateChecker: ObservableObject {
     @Published public private(set) var isChecking = false
 
     /// When the last *unsolicited* check completed. Nil until one has.
+    ///
+    /// Published for the Settings row and recorded across launches for the log. It does not gate
+    /// anything: `check` never reads it to decide whether to ask.
     @Published public private(set) var lastCheck: Date?
+
+    /// When this run of the app last started an unsolicited check.
+    ///
+    /// In memory on purpose. A fresh launch begins with no memory, so the launch check cannot be
+    /// refused by a check made yesterday, and the foreground entry a second later is one request
+    /// rather than two.
+    private var lastUnsolicitedCheck: Date?
 
     private let defaults: UserDefaults
     private let session: URLSession
@@ -168,10 +199,12 @@ public final class UpdateChecker: ObservableObject {
 
     /// The newest build this device has already put in front of the user.
     ///
-    /// A floor, not a source. `check` compares a document's newest build against this to refuse one
-    /// that is older than something already offered — it never reads this to choose the offer.
-    /// `skippedBuild` counts too, so an install that predates this key (a device whose only memory
-    /// is "I said not now to 691") does not get walked back to 680.
+    /// A record, not a veto. It is written when an offer is shown and printed in the check log, and
+    /// nothing compares it against a document to refuse one — a stored number above the feed's
+    /// newest build would otherwise be indistinguishable from a stale feed and would silence a real
+    /// release. What protects the screen from a stale document is the card that is *up* (see
+    /// `settle`), which is live evidence rather than a remembered number.
+    /// `skippedBuild` counts too, so the record describes what this device answered.
     public var highestOfferedBuild: Int {
         max(defaults.integer(forKey: DefaultsKey.highestOfferedBuild), skippedBuild ?? 0)
     }
@@ -187,66 +220,140 @@ public final class UpdateChecker: ObservableObject {
 
     // MARK: Checking
 
+    /// What the last check actually established, in words a row can print.
+    ///
+    /// The reason this exists: "no card appeared" used to be the *only* signal, and it is the same
+    /// signal for five different facts — the device is current, the feed was unreachable, the newest
+    /// entry cannot be installed here, the user declined this build, or nothing was read at all.
+    /// A person pressing "Check for Updates" and seeing the build they already have reads that as
+    /// "up to date", so a check that failed or was vetoed was indistinguishable from a true negative.
+    public enum CheckOutcome: Equatable, Sendable {
+        /// The fresh document's newest *installable* build is this one or older. Only this case may
+        /// be reported as "up to date".
+        case upToDate(newest: Int, installed: Int)
+        /// A newer build was offered (and, unsolicited, not already declined).
+        case offered(AvailableUpdate)
+        /// The document's newest build cannot be installed on this platform — a `.dmg` on a phone.
+        /// A document was read; it just names something this app cannot hand to a sideloader.
+        case notInstallable(advertised: Int)
+        /// No document at all: every feed failed to answer, or answered without a parsable entry.
+        case unreachable
+        /// The document names a newer build, and this device already said "Not now" to exactly it.
+        case declined(build: Int)
+    }
+
+    /// The outcome of the most recent completed check, or nil before the first one finishes.
+    @Published public private(set) var outcome: CheckOutcome?
+
     /// Ask the feed, and offer the result when it is newer.
     ///
     /// - Parameter manual: a person tapped "Check for Updates". A manual check ignores both the
-    ///   24-hour throttle and the remembered skip, because it is an explicit request to be told.
-    /// - Parameter atLaunch: this is the check a cold start makes. It ignores the 24-hour throttle —
-    ///   opening the app is the moment a person expects to be told about a new build, and a phone
-    ///   opened twice in a minute costs one extra request, not one per launch of a session — while a
-    ///   build the user already answered "Not now" to still stays answered (see `skippedBuild`).
+    ///   throttle and the remembered skip, because it is an explicit request to be told.
+    /// - Parameter atLaunch: this is the check a cold start makes. It never consults the throttle —
+    ///   opening the app is the moment a person expects to be told about a new build — and it says
+    ///   so in the log (`update: launch check (throttle=skipped)`) so a device's log proves which
+    ///   path ran. A build the user already answered "Not now" to still stays answered (see
+    ///   `skippedBuild`); that is the only history an offer respects.
+    ///
+    /// What is *not* consulted, by any path: `lastCheck` and `highestOfferedBuild`. A number from an
+    /// earlier session is a record, never a gate — a fresh document newer than the build running
+    /// here is news, and no stored value may refuse it.
     public func check(manual: Bool = false, atLaunch: Bool = false) async {
+        let source = manual ? "manual" : (atLaunch ? "launch" : "foreground")
+
         // Two triggers can fire within a second of each other (launch and the first foreground
         // notification); one round trip answers both.
-        guard !isChecking else { return }
-
-        if !manual, !atLaunch, let lastCheck,
-           Date().timeIntervalSince(lastCheck) < Self.minimumCheckInterval {
+        guard !isChecking else {
+            // A press that lands on a check already in flight is folded into it, not dropped in
+            // silence: the row is showing "Checking…", and the in-flight answer will settle it.
+            if manual { Self.note("update: check(source=manual) skipped=in-flight") }
             return
+        }
+
+        if !manual {
+            if atLaunch {
+                // Named before any work, so a launch that goes on to find nothing still proves the
+                // launch path reached the feed instead of being swallowed by a clock.
+                Self.note("update: launch check (throttle=skipped)")
+            } else if let previous = lastUnsolicitedCheck,
+                      Date().timeIntervalSince(previous) < Self.repeatCheckInterval {
+                // The one skip left, and it can only ever repeat an answer this session already has.
+                Self.note("update: foreground check (throttle=hit, "
+                          + "\(Int(Date().timeIntervalSince(previous)))s since the last check)")
+                return
+            } else {
+                Self.note("update: foreground check (throttle=fresh)")
+            }
         }
 
         isChecking = true
         defer { isChecking = false }
+        if !manual { lastUnsolicitedCheck = Date() }
 
         let read = await latestUpdate()
         let installed = currentBuild
 
         // An attempt is what gets remembered, not a success: a feed that is down for a day must not
         // be re-asked on every foreground, and the next launch is the natural retry. A manual check
-        // is never throttled, so it records nothing.
+        // is never throttled, so it records nothing. The value is written for the log and the
+        // Settings row — nothing reads it to decide whether to ask.
         if !manual {
             let now = Date()
             defaults.set(now, forKey: DefaultsKey.lastCheck)
             lastCheck = now
         }
 
-        // Exactly one line per check, before any early return: URL, transport state, the build the
-        // document carried, this install, and the offer made of it. A single line from a phone then
-        // settles "where did this version come from".
-        Self.logCheck(read, installed: installed,
-                      decision: decision(for: read, installed: installed, manual: manual))
+        let floor = highestOfferedBuild
+        let settled = settle(read, installed: installed, manual: manual)
+        outcome = settled.outcome
+
+        // Exactly one measurement line per check: the source, URL, transport state, the build the
+        // document advertised, whether this platform can install it, this install, and the offer
+        // made of it — or the reason there was none.
+        Self.logCheck(read, installed: installed, source: source, offer: settled.log, highest: floor)
+    }
+
+    /// Turn one read of the feed into an offer (or a stated reason for none), and apply it.
+    ///
+    /// The offer is a function of two current facts only — the fresh document and the build running
+    /// here. The one piece of history it respects is an explicit "Not now" for exactly this build,
+    /// and that applies only to unsolicited checks.
+    private func settle(_ read: FeedRead, installed: Int, manual: Bool) -> (outcome: CheckOutcome, log: String) {
+        let shown = available
+
+        // A document older than a card already on screen cannot retract it: the card is live
+        // evidence of a document this session read, and a stale copy must not take a newer offer
+        // away mid-read. This is the card-preserving half of what the stored floor used to do, and
+        // it needs no persisted number — only what is actually on screen.
+        func keepingNewerCard(than build: Int, because reason: String) -> (outcome: CheckOutcome, log: String)? {
+            guard let shown, shown.build > build else { return nil }
+            return (.offered(shown), "\(shown.build) (\(shown.version)) kept (\(reason))")
+        }
 
         guard let found = read.installable else {
-            // Nothing newer, or nothing reachable. A stale offer is withdrawn either way.
+            if let kept = keepingNewerCard(than: read.advertised?.build ?? 0, because: "no installable entry") {
+                return kept
+            }
+            // Withdraw a stale card: there is no installable entry behind it any more.
             available = nil
             isPromptVisible = false
-            return
+            if let advertised = read.advertised {
+                return (.notInstallable(advertised: advertised.build),
+                        "none (newest \(advertised.build) is not installable here)")
+            }
+            return (.unreachable, "none (no document read)")
         }
 
-        guard found.build > currentBuild else {
+        guard found.build > installed else {
+            if let kept = keepingNewerCard(than: found.build, because: "document at \(found.build)") {
+                return kept
+            }
+            // A document whose newest installable build is the running one or older: genuinely
+            // current, and the only shape that may be reported as such.
             available = nil
             isPromptVisible = false
-            return
-        }
-
-        // A stale document (an edge-cached copy from before a publish) can advertise a build this
-        // device was already shown something newer than. Discard it rather than walk the user
-        // backwards through superseded versions; a newer card already on screen stays on screen.
-        guard found.build >= highestOfferedBuild else {
-            if let shown = available, shown.build > found.build { return }
-            available = nil
-            isPromptVisible = false
-            return
+            return (.upToDate(newest: found.build, installed: installed),
+                    "none (installed \(installed))")
         }
 
         // Unsolicited: a build the user already declined stays declined until a newer one appears.
@@ -254,7 +361,8 @@ public final class UpdateChecker: ObservableObject {
         if !manual, found.build == skippedBuild {
             available = nil
             isPromptVisible = false
-            return
+            return (.declined(build: found.build),
+                    "none (skipped \(found.build))")
         }
 
         available = found
@@ -263,17 +371,7 @@ public final class UpdateChecker: ObservableObject {
         // sheet, so it must be presented *there*, over the sheet the user is looking at.
         promptHost = manual ? .settings : .root
         isPromptVisible = true
-    }
-
-    /// What the check decided, in the words of its one log line.
-    private func decision(for read: FeedRead, installed: Int, manual: Bool) -> String {
-        guard let found = read.installable else { return "none (no installable entry)" }
-        if found.build <= installed { return "none (installed \(installed))" }
-        if found.build < highestOfferedBuild {
-            return "none (stale: \(found.build) is behind \(highestOfferedBuild) already offered)"
-        }
-        if !manual, found.build == skippedBuild { return "none (skipped \(found.build))" }
-        return "\(found.build) (\(found.version))"
+        return (.offered(found), "\(found.build) (\(found.version))")
     }
 
     /// Move a visible card to another presentation context, without withdrawing it.
@@ -359,6 +457,8 @@ public final class UpdateChecker: ObservableObject {
                                     age: fetched.age, advertised: nil, installable: nil)
                 guard let update = Self.update(in: fetched.data) else {
                     last = read
+                    Self.note("update: \(url.absoluteString) answered \(fetched.state.rawValue) "
+                              + "but carried no parsable entry")
                     continue
                 }
                 // The document's newest entry is the candidate. Comfortably: `update(in:)` reduces
@@ -370,6 +470,10 @@ public final class UpdateChecker: ObservableObject {
                 guard Self.isInstallable(update.url) else {
                     print("[updates] \(url.lastPathComponent) advertises "
                           + "\(update.url.lastPathComponent) — not installable here")
+                    // In the update log too: a phone reading a `.dmg` entry is the shape that used
+                    // to be reported as "no update" with no trace of which document said so.
+                    Self.note("update: \(url.absoluteString) advertises "
+                              + "\(update.url.lastPathComponent) — not installable here")
                     continue
                 }
                 last = last.with(advertised: update, installable: update)
@@ -378,6 +482,9 @@ public final class UpdateChecker: ObservableObject {
                 last = FeedRead(url: url, state: .unreachable, status: nil, age: nil,
                                 advertised: nil, installable: nil)
                 print("[updates] \(url.lastPathComponent) unavailable: \(error.localizedDescription)")
+                // The log has to name the attempt, or "the primary feed failed and the fallback
+                // answered" reads as a single check that found nothing.
+                Self.note("update: \(url.absoluteString) unavailable: \(error.localizedDescription)")
             }
         }
         return last
@@ -397,30 +504,46 @@ public final class UpdateChecker: ObservableObject {
 #endif
     }
 
+    /// The one decision line a check leaves before it fetches anything.
+    ///
+    /// Separate from `logCheck` on purpose: this one says *why* a check happened (or did not), the
+    /// other says *what* the feed answered. A log with only the second kind is exactly how a launch
+    /// that never asked looked healthy — one `offer=none` line from before a publish and silence
+    /// after it.
+    static func note(_ text: String) {
+        ClientLog.note(text, level: .info, category: "update")
+    }
+
     /// The one line a check leaves in the `update` log.
     ///
-    /// It names the URL, what the transport did, the newest build the document carried, the build
-    /// running here, and the offer that came of it. One line from a phone answers "which document
-    /// did it see, and why did it offer that version" without another round trip.
-    static func logCheck(_ read: FeedRead, installed: Int, decision: String) {
+    /// It names the source that asked (launch, foreground or manual), the URL, what the transport
+    /// did, the newest build the document advertised, the newest build this platform can install,
+    /// the build running here, the stored floor (recorded, never a gate — a value above
+    /// `advertised` here is the only evidence a refusal could ever have left), and the offer that
+    /// came of it or the reason there was none. One line from a phone settles "did it ask, what did
+    /// it read, and why did it say what it said" without another round trip.
+    static func logCheck(_ read: FeedRead, installed: Int, source: String, offer: String, highest: Int) {
         let advertised = read.advertised.map { "\($0.build) (\($0.version))" } ?? "none"
+        let installable = read.installable.map { String($0.build) } ?? "none"
         let status = read.status.map { String($0) } ?? "-"
         let age = read.age.map { String($0) } ?? "-"
-        ClientLog.note("\(read.url?.absoluteString ?? "no-url") "
+        ClientLog.note("update: check(source=\(source)) "
+                       + "\(read.url?.absoluteString ?? "no-url") "
                        + "state=\(read.state.rawValue) "
                        + "http=\(status) "
                        + "age=\(age) "
                        + "advertised=\(advertised) "
+                       + "installable=\(installable) "
                        + "installed=\(installed) "
-                       + "offer=\(decision)",
+                       + "highest=\(highest) "
+                       + "offer=\(offer)",
                        level: .info, category: "update")
     }
 
     /// Remember the build that was actually shown.
     ///
-    /// Write-only from the offer's side: `check` reads `highestOfferedBuild` to refuse an older
-    /// document, never to choose a newer one. The guard keeps it monotonic even if a stale value is
-    /// somehow written later.
+    /// A record, not a gate: the log prints it, and nothing refuses a document because of it. The
+    /// guard keeps it monotonic even if a stale value is somehow written later.
     private func rememberOffered(_ build: Int) {
         guard build > defaults.integer(forKey: DefaultsKey.highestOfferedBuild) else { return }
         defaults.set(build, forKey: DefaultsKey.highestOfferedBuild)

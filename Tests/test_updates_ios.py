@@ -80,12 +80,14 @@ class TheCheckerIsSharedAndReadsTheFeed(unittest.TestCase):
 
 
 class ComparisonsAndRememberedDecisions(unittest.TestCase):
-    """§6 + §7.1: strictly newer wins, the skip and the throttle both outlive a relaunch."""
+    """§6 + §7.1: strictly newer wins, the skip outlives a relaunch, no clock refuses a launch."""
 
     def setUp(self):
         self.source = read(CHECKER_PATH)
         self.check = block(self.source, "public func check(manual: Bool = false, atLaunch: Bool = false) async {",
-                           "/// The user dismissed the card")
+                           "/// Turn one read of the feed into an offer")
+        self.settle = block(self.source, "private func settle(_ read: FeedRead, installed: Int, manual: Bool)",
+                            "/// Move a visible card")
 
     def test_the_keys_are_stable_and_declared_once(self):
         self.assertEqual(self.source.count('"hermey.updates.skippedBuild"'), 1,
@@ -93,49 +95,66 @@ class ComparisonsAndRememberedDecisions(unittest.TestCase):
         self.assertEqual(self.source.count('"hermey.updates.lastCheck"'), 1)
         self.assertIn("UserDefaults", self.source)
 
-    def test_the_throttle_is_one_day_and_only_covers_scheduled_checks(self):
-        self.assertIn("24 * 60 * 60", self.source)
-        self.assertIn("if !manual, !atLaunch, let lastCheck", self.check,
-                      "the 24 h gate must not apply to a manual check or to the launch check")
+    def test_no_clock_refuses_a_launch_or_a_return_to_the_front(self):
+        # The report: "not getting update prompt at app start". A 24 h gate on the *foreground* path —
+        # which on iOS is what "opening the app" usually is — silenced every check for a day after a
+        # check that found nothing, so a build published at 12:44 was invisible at 18:00.
+        self.assertNotIn("minimumCheckInterval", self.source)
+        self.assertNotIn("24 * 60 * 60", self.source,
+                         "no daily interval may exist to gate a user-visible check")
+        self.assertIn("public static let repeatCheckInterval: TimeInterval = 15 * 60", self.source)
+        # And the stored timestamp is not what the gate reads.
+        self.assertNotIn("timeIntervalSince(lastCheck)", self.check)
+        self.assertIn("lastUnsolicitedCheck", self.check,
+                      "the surviving throttle must be the in-session one")
 
     def test_a_cold_start_asks_the_feed_every_time(self):
         # "when i close and run the app, it should do the new update check immediately at bootup".
-        # The throttle covers the foreground notification; the launch check bypasses it.
         self.assertIn("atLaunch: this is the check a cold start makes", self.source)
-        self.assertIn("!manual, !atLaunch", self.check)
-        # ...and the launch check is remembered, so the foreground notification a second later is
-        # not a second request.
-        record = block(self.check, "let read = await latestUpdate()", "guard let found = read.installable else")
+        # The launch path is named before it fetches, so a log proves it ran even when the answer is
+        # "nothing newer": `update: launch check (throttle=skipped)`.
+        self.assertIn('Self.note("update: launch check (throttle=skipped)")', self.check)
+        self.assertLess(self.check.index("update: launch check (throttle=skipped)"),
+                        self.check.index("let read = await latestUpdate()"),
+                        "the launch line must be written before the round trip, not after it")
+        # ...and the launch check is remembered in-session, so the foreground notification a second
+        # later is not a second request.
+        record = block(self.check, "let read = await latestUpdate()", "let settled = settle(")
         self.assertIn("defaults.set(now, forKey: DefaultsKey.lastCheck)", record)
-        self.assertIn("if !manual {", record)
 
     def test_a_manual_check_always_reaches_the_feed(self):
-        manual_path = block(self.check, "let read = await latestUpdate()", "guard found.build > currentBuild")
+        # The throttle lives inside `if !manual {`, so a manual press never enters it, and a press
+        # that lands on a check already in flight is folded into it instead of vanishing.
+        self.assertIn("if !manual {", self.check)
+        self.assertIn('Self.note("update: check(source=manual) skipped=in-flight")', self.check)
+        gate = block(self.check, 'Self.note("update: check(source=manual) skipped=in-flight")',
+                     'Self.note("update: launch check')
+        self.assertIn("return", gate)
+        manual_path = block(self.check, "let read = await latestUpdate()", "let settled = settle(")
         self.assertIn("if !manual {", manual_path)
-        self.assertIn("defaults.set(now, forKey: DefaultsKey.lastCheck)", manual_path)
+        self.assertIn("let settled = settle(read, installed: installed, manual: manual)", self.check)
 
     def test_only_a_strictly_newer_build_is_offered(self):
-        self.assertIn("found.build > currentBuild", self.check)
-        self.assertNotIn("found.build >= currentBuild", self.check)
+        self.assertIn("guard found.build > installed else", self.settle)
+        self.assertNotIn("found.build >= installed", self.settle)
 
     def test_an_unreadable_bundle_build_cannot_trigger_an_offer(self):
         # currentBuild is 0 when CFBundleVersion is missing; anything "newer" than 0 must not be
         # offered, so the comparison has to be guarded by the feed build being real.
-        self.assertIn("guard found.build > currentBuild else", self.check)
+        self.assertIn("guard found.build > installed else", self.settle)
         self.assertIn('Int(text.trimmingCharacters(in: .whitespaces)) ?? 0', self.source)
 
     def test_a_skipped_build_is_suppressed_only_when_unsolicited(self):
-        skip_guard = block(self.check, "guard found.build > currentBuild else",
-                           "available = found")
+        skip_guard = block(self.settle, "guard found.build > installed else", "return (.offered(found)")
         self.assertIn("if !manual, found.build == skippedBuild", skip_guard,
                       "unsolicited checks must respect the skip")
         # The guard returns, so a skipped build cannot fall through to the offer...
         after_guard = skip_guard.split("if !manual, found.build == skippedBuild", 1)[1]
         self.assertIn("return", after_guard.split("}", 1)[0])
         # ...while a manual check never enters it, and both offer writes sit after it.
-        self.assertIn("if !manual, found.build == skippedBuild", self.check)
-        self.assertIn("available = found", self.check)
-        self.assertIn("isPromptVisible = true", self.check)
+        self.assertIn("if !manual, found.build == skippedBuild", self.settle)
+        self.assertIn("available = found", self.settle)
+        self.assertIn("isPromptVisible = true", self.settle)
 
     def test_dismissal_records_the_build_before_the_card_closes(self):
         dismiss = block(self.source, "public func dismissPrompt() {", "/// The user chose Download")
@@ -362,3 +381,76 @@ class OnlyAnArtifactThisPlatformCanInstall(unittest.TestCase):
         self.assertIn("guard Self.isInstallable(update.url) else {", latest)
         self.assertIn("continue", latest,
                       "the fallback feed is tried, and a .dmg is never returned as an update")
+
+
+class ACheckThatFindsNothingSaysWhy(unittest.TestCase):
+    """A press that produced no card used to look exactly like a device that is current.
+
+    The report: "pressed Check now on 0.1.692, it said up to date", while both published documents
+    advertised 0.1.693. "Up to date" is a claim about the feed, and the row was making it whenever it
+    had nothing to show — which is also what it does when the feed was unreachable, when the newest
+    entry was a `.dmg`, when the build had been declined, or when the press was folded into a check
+    already running. Each of those now has its own outcome, and only one of them may say it.
+    """
+
+    def setUp(self):
+        self.checker = read(CHECKER_PATH)
+        self.settings = read(SETTINGS_PATH)
+        self.check = block(self.checker, "public func check(manual: Bool = false, atLaunch: Bool = false) async {",
+                           "/// Turn one read of the feed into an offer")
+        self.settle = block(self.checker, "private func settle(_ read: FeedRead, installed: Int, manual: Bool)",
+                            "/// Move a visible card")
+        self.row = block(self.settings, "struct CheckForUpdatesRow: View {", "// MARK: - Settings, as a sheet")
+
+    def test_every_finished_check_publishes_what_it_established(self):
+        self.assertIn("@Published public private(set) var outcome: CheckOutcome?", self.checker)
+        self.assertEqual(self.check.count("outcome = settled.outcome"), 1,
+                         "one write per finished check, so the row always describes the last answer")
+        for case in ("case upToDate(newest: Int, installed: Int)",
+                     "case offered(AvailableUpdate)",
+                     "case notInstallable(advertised: Int)",
+                     "case unreachable",
+                     "case declined(build: Int)"):
+            self.assertIn(case, self.checker, f"the outcome needs {case!r}")
+
+    def test_up_to_date_is_reachable_only_from_a_fresh_document_at_or_below_this_build(self):
+        # Exactly one construction site, and it sits under the strictly-newer guard: an offer that
+        # was skipped, unreachable or uninstallable cannot arrive here.
+        self.assertEqual(self.settle.count("(.upToDate("), 1)
+        after_guard = self.settle.split("guard found.build > installed else", 1)[1]
+        self.assertIn("(.upToDate(", after_guard,
+                      "up-to-date may only be concluded after ruling out a newer document")
+        self.assertLess(after_guard.index(".upToDate("),
+                        after_guard.index("if !manual, found.build == skippedBuild"),
+                        "it belongs inside that guard, alongside the other no-offer reasons")
+
+    def test_a_manual_press_with_a_newer_document_cannot_end_in_up_to_date(self):
+        # The manual path reaches `settle` with `manual: true`, and the only early exits it can take
+        # before the offer are about the document itself (uninstallable / not newer), never history.
+        self.assertIn("let settled = settle(read, installed: installed, manual: manual)", self.check)
+        manual_refusals = [line for line in self.settle.splitlines()
+                           if "return" in line and "manual" in line]
+        self.assertEqual(manual_refusals, [],
+                         "no refusal in the decision may be conditional on the check's source")
+        self.assertIn("if !manual, found.build == skippedBuild", self.settle)
+
+    def test_the_row_prints_up_to_date_only_for_the_up_to_date_outcome(self):
+        self.assertIn("case .upToDate?:", self.row)
+        self.assertIn('"Up to date · \\(mine)"', self.row)
+        self.assertEqual(self.row.count('return "Up to date'), 1,
+                         "one place in the row may say it, and it is the .upToDate case")
+
+    def test_the_row_says_which_reason_applies_when_there_is_no_update(self):
+        for wording in ('"Could not check · \\(mine)"',
+                        '"Build \\(advertised) is not installable here · \\(mine)"',
+                        '"Build \\(declined) is being ignored · \\(mine)"'):
+            self.assertIn(wording, self.row)
+        # ...and it no longer infers its text from the presence of an offer alone.
+        self.assertNotIn("if let available = updates.available", self.row)
+
+    def test_a_press_during_a_check_is_folded_into_it_instead_of_vanishing(self):
+        # The row shows "Checking…" while a check runs, and the press is named in the log rather than
+        # returning with nothing said.
+        self.assertIn('if updates.isChecking { return "Checking…" }', self.row)
+        self.assertIn('Self.note("update: check(source=manual) skipped=in-flight")', self.check)
+        self.assertNotIn('Self.note("update: check(source=manual)")\n            return', self.check)

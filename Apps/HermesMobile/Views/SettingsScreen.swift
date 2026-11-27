@@ -775,12 +775,30 @@ struct CheckForUpdatesRow: View {
 
     /// The build is always named: a person deciding about an update wants to know which one they
     /// have, and "up to date" alone never says that.
+    ///
+    /// Every finished check reports what it established, because the row used to answer the same
+    /// thing — just the build — for five different facts: current, feed unreachable, newest entry
+    /// not installable here, this build declined, or a press folded into a check already running.
+    /// A press followed by "Build 692" reads as "up to date" whatever happened, which is how a real
+    /// 693 went unnoticed. "Up to date" is now printed for exactly one case: a fresh document whose
+    /// newest installable build is this one or older (see `UpdateChecker.CheckOutcome`).
     private var detail: String {
         if updates.isChecking { return "Checking…" }
-        if let available = updates.available {
-            return "\(available.version) available · build \(updates.currentBuild)"
+        let mine = "build \(updates.currentBuild)"
+        switch updates.outcome {
+        case .offered(let available)?:
+            return "\(available.version) available · \(mine)"
+        case .upToDate?:
+            return "Up to date · \(mine)"
+        case .notInstallable(let advertised)?:
+            return "Build \(advertised) is not installable here · \(mine)"
+        case .unreachable?:
+            return "Could not check · \(mine)"
+        case .declined(let declined)?:
+            return "Build \(declined) is being ignored · \(mine)"
+        case nil:
+            return "Build \(updates.currentBuild)"
         }
-        return "Build \(updates.currentBuild)"
     }
 }
 

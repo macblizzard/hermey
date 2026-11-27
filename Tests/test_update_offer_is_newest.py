@@ -105,26 +105,58 @@ class TheOfferIsTheDocumentsMaximumBuild(unittest.TestCase):
         self.assertIn("continue", self.latest)
 
 
-class TheStoredBuildCanRefuseButNeverSelect(unittest.TestCase):
+class TheStoredBuildIsARecordNeverAVeto(unittest.TestCase):
+    """A stored number may describe history; it may never refuse a document that is newer than the
+    build running here.
+
+    The report: the owner pressed "Check now" on 692 and was told nothing was available while both
+    feeds advertised 693. A persisted "highest offered" value that sat above the feed's newest build
+    is the one shape of veto that can do that, and there is no way for the app to tell it apart from
+    a stale document — so the veto is gone, and only the card already on screen can hold a newer
+    offer in place.
+    """
+
     def setUp(self):
         self.source = read(CHECKER_PATH)
         self.check = block(self.source, "public func check(manual: Bool = false, atLaunch: Bool = false) async {",
-                           "/// What the check decided")
+                           "/// Turn one read of the feed into an offer")
+        self.settle = block(self.source, "private func settle(_ read: FeedRead, installed: Int, manual: Bool)",
+                            "/// Move a visible card")
         self.remember = block(self.source, "private func rememberOffered(", "/// One read of the feed")
         self.floor = block(self.source, "public var highestOfferedBuild: Int {",
                            "private static func bundleString(")
 
-    def test_the_floor_is_read_only_to_veto_an_older_document(self):
-        self.assertIn("guard found.build >= highestOfferedBuild else", self.check)
-        self.assertIn("shown.build > found.build", self.check,
-                      "a stale document must not withdraw a newer card already on screen")
-        # The stored value is never the thing on offer.
-        self.assertNotIn("defaults.integer(forKey: DefaultsKey.highestOfferedBuild)", self.check)
-        self.assertNotIn("highestOfferedBuild", self.check.split("available = found", 1)[1],
-                         "nothing after the document's offer may consult the stored floor")
+    def test_no_stored_value_can_refuse_a_fresh_document(self):
+        # The old guard, verbatim, must be gone from both halves of the decision.
+        self.assertNotIn("guard found.build >= highestOfferedBuild", self.source)
+        self.assertNotIn("highestOfferedBuild", self.settle,
+                         "the decision may not consult a stored number")
+        self.assertNotIn("skippedBuild", self.settle.split("if !manual, found.build == skippedBuild", 1)[1],
+                         "the skip applies to exactly one build, and only to an unsolicited check")
+
+    def test_the_floor_is_read_once_for_the_log_and_never_for_a_decision(self):
+        self.assertEqual(self.check.count("highestOfferedBuild"), 1)
+        for line in self.check.splitlines():
+            if "highestOfferedBuild" in line:
+                self.assertIn("let floor =", line,
+                              "the only read is the value the log line prints")
+        self.assertIn("highest: floor", self.check)
+
+    def test_a_document_newer_than_this_install_is_always_offered(self):
+        # The last thing `settle` can do is offer: every refusal above it is keyed on the document
+        # itself, never on stored history.
+        tail = self.settle.split("if !manual, found.build == skippedBuild", 1)[1]
+        self.assertIn("available = found", tail)
+        self.assertIn("isPromptVisible = true", tail)
+        self.assertIn("return (.offered(found)", tail)
+
+    def test_the_stale_document_protection_is_the_card_on_screen(self):
+        # What replaces the floor: a document older than a card already up cannot retract it.
+        self.assertIn("shown.build > build", self.settle)
+        self.assertIn("keepingNewerCard", self.settle)
 
     def test_the_offer_is_built_from_the_document_only(self):
-        self.assertIn("available = found", self.check)
+        self.assertIn("available = found", self.settle)
         # Every AvailableUpdate construction is in the initializer or the parser, never from defaults.
         constructions = [line for line in self.source.splitlines()
                          if "AvailableUpdate(" in line and "public init(" not in line
@@ -140,8 +172,8 @@ class TheStoredBuildCanRefuseButNeverSelect(unittest.TestCase):
         self.assertIn("defaults.set(build, forKey: DefaultsKey.highestOfferedBuild)", self.remember)
 
     def test_an_older_install_still_counts_as_already_shown(self):
-        # A device upgrading to this build has only `skippedBuild` from before; it must not be walked
-        # back past a build it already answered.
+        # A device upgrading to this build has only `skippedBuild` from before; the record must still
+        # describe what it was shown.
         self.assertIn("max(defaults.integer(forKey: DefaultsKey.highestOfferedBuild), skippedBuild ?? 0)",
                       self.floor)
 
@@ -150,23 +182,34 @@ class EveryCheckLeavesOneSettlingLine(unittest.TestCase):
     def setUp(self):
         self.source = read(CHECKER_PATH)
         self.check = block(self.source, "public func check(manual: Bool = false, atLaunch: Bool = false) async {",
-                           "/// What the check decided")
+                           "/// Turn one read of the feed into an offer")
         self.log = block(self.source, "static func logCheck(", "/// Remember the build that was actually shown")
 
     def test_the_check_logs_exactly_once(self):
         self.assertEqual(self.check.count("Self.logCheck("), 1,
                          "one line per check, or the phone's line cannot be matched to a build")
 
-    def test_the_line_names_url_state_advertised_build_and_offer(self):
+    def test_the_line_names_source_url_state_and_every_build(self):
+        self.assertIn("source=\\(source)", self.log)
         self.assertIn(".absoluteString", self.log)
-        for field in ("state=", "http=", "age=", "advertised=", "installed=", "offer="):
+        for field in ("state=", "http=", "age=", "advertised=", "installable=", "installed=",
+                      "highest=", "offer="):
             self.assertIn(field, self.log, f"the log line must carry {field!r}")
         self.assertIn('category: "update"', self.log)
 
-    def test_the_log_is_emitted_before_any_early_return(self):
-        self.assertLess(self.check.index("Self.logCheck("),
-                        self.check.index("guard let found = read.installable else"),
-                        "a check that offers nothing still has to say what it read")
+    def test_the_installable_build_is_logged_separately_from_the_advertised_one(self):
+        # "advertised=693 installable=none" is the shape that explains a phone offered nothing while
+        # the document named a newer build; one field for both hid it.
+        self.assertIn('let installable = read.installable.map { String($0.build) } ?? "none"', self.log)
+        self.assertIn('let advertised = read.advertised.map { "\\($0.build) (\\($0.version))" } ?? "none"',
+                      self.log)
+
+    def test_the_log_is_emitted_after_the_decision_and_no_longer_guards_it(self):
+        # The line has to describe what `settle` decided, so it is written after it; every reason for
+        # "no offer" now reaches the log as text instead of leaving through an early return.
+        self.assertLess(self.check.index("let settled = settle("),
+                        self.check.index("Self.logCheck("))
+        self.assertIn("offer: settled.log", self.check)
 
 
 if __name__ == "__main__":

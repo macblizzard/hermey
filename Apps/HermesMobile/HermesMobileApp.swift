@@ -111,8 +111,10 @@ struct RootView: View {
                 // purpose stays disconnected — that is a choice, not a dropped socket.
                 if phase == .background { app.appDidEnterBackground() }
                 // The update check is this build's business, not the host's: it runs on every
-                // foreground whether or not a phone is paired. `check` throttles itself to once a
-                // day, so a phone that is unlocked fifty times costs one request.
+                // foreground whether or not a phone is paired. A return to the front is a
+                // user-visible event — on iOS it is what "opening the app" usually means — so it is
+                // never refused by a clock; the only guard is a fifteen-minute repeat window inside
+                // this session, which folds a foreground toggle loop into one request.
                 if phase == .active { Task { await app.updates.check() } }
                 guard phase == .active, app.isPaired, !app.isDisconnectedByUser else { return }
                 MobileReplyNotifier.shared.refreshAuthorization()
