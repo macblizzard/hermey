@@ -1,6 +1,7 @@
 #if canImport(Combine)
 import Foundation
 import Combine
+import HermesKit
 
 /// One "a newer build than this one exists" fact, already parsed and checked as far as the app can.
 ///
@@ -59,6 +60,15 @@ public struct AvailableUpdate: Identifiable, Equatable, Sendable {
 /// throttle has to survive one too, or a phone that is opened and closed twenty times a day makes
 /// twenty feed requests. Both are two values, so they are stored beside the app's other preferences
 /// rather than in a file of their own.
+///
+/// ## Why the offer can never move backwards
+///
+/// The feed is served by a CDN with a ten-minute cache, so a check in that window can see a document
+/// written before the newest build was published. That must not turn into a chain of installs —
+/// offer 583, install it, offer 584, install it — because each hop is a full signing cycle for the
+/// owner. Every check therefore fetches with the caches bypassed, treats a 304 as "the bytes I have
+/// are current" rather than "no update", offers the document's maximum build, and keeps the highest
+/// build ever shown as a floor. The stored floor may refuse a stale offer; it may never choose one.
 @MainActor
 public final class UpdateChecker: ObservableObject {
 
@@ -67,6 +77,9 @@ public final class UpdateChecker: ObservableObject {
     public enum DefaultsKey {
         public static let skippedBuild = "hermey.updates.skippedBuild"
         public static let lastCheck = "hermey.updates.lastCheck"
+        /// The highest build this device has already been shown. A floor for the offer, never its
+        /// source: `check` reads it only to discard an older document (see `highestOfferedBuild`).
+        public static let highestOfferedBuild = "hermey.updates.highestOfferedBuild"
     }
 
     /// One unsolicited check a day. A manual check is never throttled: the person tapping the row
@@ -153,6 +166,16 @@ public final class UpdateChecker: ObservableObject {
         return recorded > 0 ? recorded : nil
     }
 
+    /// The newest build this device has already put in front of the user.
+    ///
+    /// A floor, not a source. `check` compares a document's newest build against this to refuse one
+    /// that is older than something already offered — it never reads this to choose the offer.
+    /// `skippedBuild` counts too, so an install that predates this key (a device whose only memory
+    /// is "I said not now to 691") does not get walked back to 680.
+    public var highestOfferedBuild: Int {
+        max(defaults.integer(forKey: DefaultsKey.highestOfferedBuild), skippedBuild ?? 0)
+    }
+
     private static func bundleString(_ key: String) -> String? {
         guard let value = Bundle.main.infoDictionary?[key] else { return nil }
         // `CFBundleVersion` is a string by convention but an `NSNumber` in a bundle built straight
@@ -185,20 +208,25 @@ public final class UpdateChecker: ObservableObject {
         isChecking = true
         defer { isChecking = false }
 
-        let found = await latestUpdate()
+        let read = await latestUpdate()
+        let installed = currentBuild
 
-        // The attempt is what gets remembered, not the success: a feed that is down for a day must
-        // not be re-asked on every foreground, and the next launch is the natural retry.
-        // The attempt is what gets remembered, so a launch that found nothing is not re-asked by the
-        // foreground notification a second later. A manual check is never throttled, so it records
-        // nothing.
+        // An attempt is what gets remembered, not a success: a feed that is down for a day must not
+        // be re-asked on every foreground, and the next launch is the natural retry. A manual check
+        // is never throttled, so it records nothing.
         if !manual {
             let now = Date()
             defaults.set(now, forKey: DefaultsKey.lastCheck)
             lastCheck = now
         }
 
-        guard let found else {
+        // Exactly one line per check, before any early return: URL, transport state, the build the
+        // document carried, this install, and the offer made of it. A single line from a phone then
+        // settles "where did this version come from".
+        Self.logCheck(read, installed: installed,
+                      decision: decision(for: read, installed: installed, manual: manual))
+
+        guard let found = read.installable else {
             // Nothing newer, or nothing reachable. A stale offer is withdrawn either way.
             available = nil
             isPromptVisible = false
@@ -206,6 +234,16 @@ public final class UpdateChecker: ObservableObject {
         }
 
         guard found.build > currentBuild else {
+            available = nil
+            isPromptVisible = false
+            return
+        }
+
+        // A stale document (an edge-cached copy from before a publish) can advertise a build this
+        // device was already shown something newer than. Discard it rather than walk the user
+        // backwards through superseded versions; a newer card already on screen stays on screen.
+        guard found.build >= highestOfferedBuild else {
+            if let shown = available, shown.build > found.build { return }
             available = nil
             isPromptVisible = false
             return
@@ -220,10 +258,22 @@ public final class UpdateChecker: ObservableObject {
         }
 
         available = found
+        rememberOffered(found.build)
         // The card is shown by whoever asked: a manual check is made from inside the Settings
         // sheet, so it must be presented *there*, over the sheet the user is looking at.
         promptHost = manual ? .settings : .root
         isPromptVisible = true
+    }
+
+    /// What the check decided, in the words of its one log line.
+    private func decision(for read: FeedRead, installed: Int, manual: Bool) -> String {
+        guard let found = read.installable else { return "none (no installable entry)" }
+        if found.build <= installed { return "none (installed \(installed))" }
+        if found.build < highestOfferedBuild {
+            return "none (stale: \(found.build) is behind \(highestOfferedBuild) already offered)"
+        }
+        if !manual, found.build == skippedBuild { return "none (skipped \(found.build))" }
+        return "\(found.build) (\(found.version))"
     }
 
     /// Move a visible card to another presentation context, without withdrawing it.
@@ -265,27 +315,72 @@ public final class UpdateChecker: ObservableObject {
 
     // MARK: The feed
 
-    /// Fetch the source, then its fallback. Every error path ends in nil and one log line.
-    private func latestUpdate() async -> AvailableUpdate? {
+    /// One read of one feed, kept whole so the log can describe a check that produced no offer too.
+    struct FeedRead {
+        /// What the transport actually did, in the log's words.
+        enum State: String {
+            /// A 200 fetched from the origin/edge rather than replayed from a cache here.
+            case fresh = "fresh-200"
+            /// A 304 whose validated bytes were used — not "no update".
+            case notModified = "notModified"
+            /// A 304 whose body came from this device's `URLCache`: validated, then read locally.
+            case cachedResponse = "cachedResponse"
+            /// No response at all.
+            case unreachable = "unreachable"
+        }
+
+        let url: URL?
+        let state: State
+        let status: Int?
+        let age: Int?
+        /// The newest build the document advertised, even when this platform cannot install it.
+        let advertised: AvailableUpdate?
+        /// The newest build the document advertised that this platform can install — the only
+        /// thing that may become an offer.
+        let installable: AvailableUpdate?
+
+        static let none = FeedRead(url: nil, state: .unreachable, status: nil, age: nil,
+                                   advertised: nil, installable: nil)
+
+        func with(advertised: AvailableUpdate?, installable: AvailableUpdate?) -> FeedRead {
+            FeedRead(url: url, state: state, status: status, age: age,
+                     advertised: advertised, installable: installable)
+        }
+    }
+
+    /// Fetch the source, then its fallback. Returns what the document said even when it held no
+    /// installable entry, so the caller can log one line for every check.
+    private func latestUpdate() async -> FeedRead {
+        var last = FeedRead.none
         for url in [Self.sourceURL, Self.fallbackSourceURL].compactMap({ $0 }) {
             do {
-                let data = try await fetch(url)
-                if let update = Self.update(in: data) {
-                    // An entry this platform cannot install is not an update. The mac feed names a
-                    // `.dmg`; handing that to a phone opened a disk image in Safari, which is what
-                    // "it downloads the dmg instead of the ipa" was — the manifest, not the card.
-                    guard Self.isInstallable(update.url) else {
-                        print("[updates] \(url.lastPathComponent) advertises "
-                              + "\(update.url.lastPathComponent) — not installable here")
-                        continue
-                    }
-                    return update
+                let fetched = try await fetch(url)
+                let read = FeedRead(url: url, state: fetched.state, status: fetched.status,
+                                    age: fetched.age, advertised: nil, installable: nil)
+                guard let update = Self.update(in: fetched.data) else {
+                    last = read
+                    continue
                 }
+                // The document's newest entry is the candidate. Comfortably: `update(in:)` reduces
+                // with `max`, so an intermediate version is never what comes back.
+                last = read.with(advertised: update, installable: nil)
+                // An entry this platform cannot install is not an update. The mac feed names a
+                // `.dmg`; handing that to a phone opened a disk image in Safari, which is what
+                // "it downloads the dmg instead of the ipa" was — the manifest, not the card.
+                guard Self.isInstallable(update.url) else {
+                    print("[updates] \(url.lastPathComponent) advertises "
+                          + "\(update.url.lastPathComponent) — not installable here")
+                    continue
+                }
+                last = last.with(advertised: update, installable: update)
+                return last
             } catch {
+                last = FeedRead(url: url, state: .unreachable, status: nil, age: nil,
+                                advertised: nil, installable: nil)
                 print("[updates] \(url.lastPathComponent) unavailable: \(error.localizedDescription)")
             }
         }
-        return nil
+        return last
     }
 
     /// Whether this platform can install a feed's artifact.
@@ -302,22 +397,91 @@ public final class UpdateChecker: ObservableObject {
 #endif
     }
 
+    /// The one line a check leaves in the `update` log.
+    ///
+    /// It names the URL, what the transport did, the newest build the document carried, the build
+    /// running here, and the offer that came of it. One line from a phone answers "which document
+    /// did it see, and why did it offer that version" without another round trip.
+    static func logCheck(_ read: FeedRead, installed: Int, decision: String) {
+        let advertised = read.advertised.map { "\($0.build) (\($0.version))" } ?? "none"
+        let status = read.status.map { String($0) } ?? "-"
+        let age = read.age.map { String($0) } ?? "-"
+        ClientLog.note("\(read.url?.absoluteString ?? "no-url") "
+                       + "state=\(read.state.rawValue) "
+                       + "http=\(status) "
+                       + "age=\(age) "
+                       + "advertised=\(advertised) "
+                       + "installed=\(installed) "
+                       + "offer=\(decision)",
+                       level: .info, category: "update")
+    }
 
-    private func fetch(_ url: URL) async throws -> Data {
-        var request = URLRequest(url: url)
-        request.timeoutInterval = 15
-        // A manual check means "what does the server say now"; a cached manifest would answer with
-        // the build the person is already running.
-        request.cachePolicy = .reloadIgnoringLocalCacheData
+    /// Remember the build that was actually shown.
+    ///
+    /// Write-only from the offer's side: `check` reads `highestOfferedBuild` to refuse an older
+    /// document, never to choose a newer one. The guard keeps it monotonic even if a stale value is
+    /// somehow written later.
+    private func rememberOffered(_ build: Int) {
+        guard build > defaults.integer(forKey: DefaultsKey.highestOfferedBuild) else { return }
+        defaults.set(build, forKey: DefaultsKey.highestOfferedBuild)
+    }
+
+    /// One read of the feed: bytes plus the transport facts the log needs.
+    ///
+    /// The request defeats every cache it can. `.reloadIgnoringLocalAndRemoteCacheData` empties our
+    /// `URLCache` for this request and asks intermediaries not to answer from their copy; the
+    /// headers say it again for edges that only read them; and the `cb` query is a cache key no
+    /// earlier request used. None of the three changes which file GitHub Pages serves, and the
+    /// manifest's own `downloadURL` is never rewritten.
+    private func fetch(_ url: URL) async throws -> (data: Data, state: FeedRead.State,
+                                                   status: Int, age: Int?) {
+        var request = URLRequest(url: Self.cacheBusted(url),
+                                 cachePolicy: .reloadIgnoringLocalAndRemoteCacheData,
+                                 timeoutInterval: 15)
+        request.setValue("no-cache, no-store", forHTTPHeaderField: "Cache-Control")
+        request.setValue("no-cache", forHTTPHeaderField: "Pragma")
         let (data, response) = try await session.data(for: request)
-        guard let http = response as? HTTPURLResponse, (200 ..< 300).contains(http.statusCode) else {
-            throw UpdateFeedError.badStatus((response as? HTTPURLResponse)?.statusCode ?? -1)
+        guard let http = response as? HTTPURLResponse else {
+            throw UpdateFeedError.badStatus(-1)
         }
-        return data
+        let age = http.value(forHTTPHeaderField: "Age").flatMap { Int($0) }
+        switch http.statusCode {
+        case 200 ..< 300:
+            return (data, .fresh, http.statusCode, age)
+        case 304:
+            // A 304 means the copy the server holds is still current, not that there is no update.
+            // Use the bytes the server just validated; only when neither the response nor the cache
+            // carries them is this a failure. Returning nil here would be the bug this fixes.
+            if !data.isEmpty { return (data, .notModified, http.statusCode, age) }
+            if let cached = URLCache.shared.cachedResponse(for: URLRequest(url: url))?.data,
+               !cached.isEmpty {
+                return (cached, .cachedResponse, http.statusCode, age)
+            }
+            throw UpdateFeedError.notModifiedWithoutBody
+        default:
+            throw UpdateFeedError.badStatus(http.statusCode)
+        }
+    }
+
+    /// The same manifest under a query no cache has seen.
+    ///
+    /// GitHub Pages routes on the path and serves the same file, so this cannot break the manifest;
+    /// it only prevents a stale cache key from being reused.
+    static func cacheBusted(_ url: URL) -> URL {
+        guard var components = URLComponents(url: url, resolvingAgainstBaseURL: false) else {
+            return url
+        }
+        var items = components.queryItems ?? []
+        items.removeAll { $0.name == "cb" }
+        items.append(URLQueryItem(name: "cb", value: String(Int(Date().timeIntervalSince1970))))
+        components.queryItems = items
+        return components.url ?? url
     }
 
     enum UpdateFeedError: Error {
         case badStatus(Int)
+        /// A 304 arrived and neither the response nor the cache carried the validated bytes.
+        case notModifiedWithoutBody
     }
 
     /// Parse either feed shape and return its newest entry, or nil when neither shape is present.
