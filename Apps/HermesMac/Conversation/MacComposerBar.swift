@@ -259,12 +259,12 @@ struct MacComposerBar: View {
                      attachPopoverContent: AnyView(
                         MacAttachmentMenu(model: model, isPresented: $showsAttachmentMenu)
                      ),
+                     onCommand: runCommand,
                      // Exactly what `runCommand` answers, and nothing more: `/status` and
                      // `/memory` are not native here, so they fall through and are sent to the
                      // host rather than dead-looping in the field.
                      nativeActions: [.help, .newSession, .resetConversation, .compact,
-                                     .model, .reasoning],
-                     onCommand: runCommand)
+                                     .model, .reasoning])
                 // The card is its content: one row of text and controls, the hint under it. A
                 // fixed resting height used to hand the slack to the field, which left the
                 // paperclip and the send arrow hanging below the line of text they act on.
