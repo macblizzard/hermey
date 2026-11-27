@@ -65,6 +65,10 @@ targets:
       # Native agent cards (`card.v1`): the third renderer, after A2UI and before genui.
       - package: HermesApps
         product: HermesCards
+      # Hands-free voice conversation: the same loop on both platforms (mic capture, VAD,
+      # endpointing, TTS playback, teardown), so the shells only wire it to their composer.
+      - package: HermesApps
+        product: HermesVoice
       # macOS only: iOS cannot replace its own bundle, so the phone's notifier opens a URL instead
       # (HermesAppKit/Updates). Nothing here reaches the HermesMobile target.
       - package: Sparkle
@@ -101,7 +105,9 @@ targets:
         NSHumanReadableCopyright: "Personal build"
         # Pressing record captures the Mac's default input device. macOS terminates an app that
         # opens a capture input without this string, so the prompt is the whole feature.
-        NSMicrophoneUsageDescription: "Record a voice message to transcribe with your Hermes host."
+        # Both the microphone button (one message, transcribed) and the hands-free conversation
+        # read the input device, so the sentence names both.
+        NSMicrophoneUsageDescription: "Listen while you talk, so Hermey can answer out loud and keep listening. Audio is transcribed by your Hermes host and not stored on this device."
         # The composer's Photos button opens the system photo picker. The picker runs out of
         # process and reads nothing itself, but the string is the key macOS looks up before it
         # hands a library item over, and its absence is a termination rather than a prompt.
@@ -168,6 +174,10 @@ targets:
       # Native agent cards (`card.v1`): the third renderer, after A2UI and before genui.
       - package: HermesApps
         product: HermesCards
+      # Hands-free voice conversation: the same loop on both platforms (mic capture, VAD,
+      # endpointing, TTS playback, teardown), so the shells only wire it to their composer.
+      - package: HermesApps
+        product: HermesVoice
       # Embedded, not just linked: an App Extension that is not copied into the app bundle makes
       # `Activity.request` fail at runtime while the build stays perfectly green.
       - target: HermesLiveActivity
@@ -197,7 +207,9 @@ targets:
         # Required the moment the QR scanner asks for the camera: iOS terminates the app
         # on first capture input without this string, so pairing would look like a crash.
         NSCameraUsageDescription: "Scan the pairing code shown by your Hermes host to connect this device, and take photos to attach to a message."
-        NSMicrophoneUsageDescription: "Record a voice message to transcribe with your Hermes host."
+        # Both the microphone button (one message, transcribed) and the hands-free conversation
+        # read the input device, so the sentence names both.
+        NSMicrophoneUsageDescription: "Listen while you talk, so Hermey can answer out loud and keep listening. Audio is transcribed by your Hermes host and not stored on this device."
         # A banner arrives from the relay app (Bark), which can only open a URL. `hermey://bot/<id>`
         # is how tapping it lands on the bot that spoke instead of on the list.
         CFBundleURLTypes:

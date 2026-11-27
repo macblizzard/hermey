@@ -699,6 +699,19 @@ final class WorkspaceStore: ObservableObject {
         return try await MacVoiceService(address: address).transcribe(audio: audio, mimeType: mimeType)
     }
 
+    /// Speak one sentence on the paired host.
+    ///
+    /// Same credential story as `transcribeVoice` — one freshly minted ticket per request, read from
+    /// this window's pairing at call time — because `/v1/voice/synthesize` authenticates exactly
+    /// like `/v1/voice/transcribe`. The loop calls this once per sentence so the first words are
+    /// heard while the rest of the reply is still being made.
+    func synthesizeVoice(_ text: String) async throws -> Data {
+        guard let address = pairing, !address.isTicketOnly else {
+            throw MacVoiceFailure.devicePairingRequired
+        }
+        return try await MacVoiceService(address: address).synthesize(text: text)
+    }
+
     // MARK: Approvals
 
     /// - Parameter remembering: send `always`, which the host records in its allow-list.

@@ -57,6 +57,19 @@ public struct Composer: View {
     private let micAccessibilityLabel: String
     private let isMicEnabled: Bool
 
+    /// The hands-free conversation's control, drawn left of the microphone.
+    ///
+    /// A second slot rather than a second meaning for the microphone: hold-to-talk dictation and a
+    /// continuous loop are different promises, and one button that swaps between them is how a user
+    /// ends up talking to a microphone nobody is reading. When the loop is on, the caller disables
+    /// the microphone (`isMicEnabled: false`) so only one capture can ever run.
+    private let showsVoiceMode: Bool
+    private let voiceModeSystemImage: String
+    private let voiceModeTint: Color?
+    private let voiceModeAccessibilityLabel: String
+    private let isVoiceModeEnabled: Bool
+    private let onVoiceMode: (() -> Void)?
+
     @FocusState private var focused: Bool
 
     /// A screen that wants to drive the caret itself — the phone's conversation, which has to raise
@@ -102,6 +115,12 @@ public struct Composer: View {
                 micTint: Color? = nil,
                 micAccessibilityLabel: String = "Record a voice message",
                 isMicEnabled: Bool = true,
+                showsVoiceMode: Bool = false,
+                voiceModeSystemImage: String = "waveform",
+                voiceModeTint: Color? = nil,
+                voiceModeAccessibilityLabel: String = "Start a hands-free voice conversation",
+                isVoiceModeEnabled: Bool = true,
+                onVoiceMode: (() -> Void)? = nil,
                 hint: String? = Composer.defaultHint,
                 sessionRow: ComposerSessionRow? = nil,
                 onSend: @escaping () -> Void,
@@ -126,6 +145,12 @@ public struct Composer: View {
         self.micTint = micTint
         self.micAccessibilityLabel = micAccessibilityLabel
         self.isMicEnabled = isMicEnabled
+        self.showsVoiceMode = showsVoiceMode
+        self.voiceModeSystemImage = voiceModeSystemImage
+        self.voiceModeTint = voiceModeTint
+        self.voiceModeAccessibilityLabel = voiceModeAccessibilityLabel
+        self.isVoiceModeEnabled = isVoiceModeEnabled
+        self.onVoiceMode = onVoiceMode
         self.hint = hint
         self.sessionRow = sessionRow
         self.onSend = onSend
@@ -298,6 +323,10 @@ public struct Composer: View {
 
                 // The microphone belongs beside the send arrow: one row of controls, and the
                 // control that ends a message next to the one that starts it.
+                if showsVoiceMode {
+                    rowCentred(voiceModeControl)
+                }
+
                 if showsMic {
                     rowCentred(micControl)
                 }
@@ -631,6 +660,36 @@ public struct Composer: View {
             button.popover(isPresented: presented, arrowEdge: .top) { content }
         } else {
             button
+        }
+    }
+
+    /// The conversation toggle: one tap opens the microphone and keeps it open until it is tapped
+    /// again, or until the user says "stop".
+    ///
+    /// Tinted while the loop owns the microphone, so the control's own appearance is the answer to
+    /// "is this thing listening right now?" — the status line above the card carries the detail.
+    @ViewBuilder
+    private var voiceModeControl: some View {
+        if let onVoiceMode {
+            Button {
+                Haptics.selection()
+                onVoiceMode()
+            } label: {
+                Image(systemName: voiceModeSystemImage)
+                    .font(.system(size: glyphSize, weight: .semibold))
+                    .foregroundStyle(voiceModeTint ?? Tokens.textSecondary)
+                    .frame(width: controlSide, height: controlSide)
+                    .contentShape(Circle())
+            }
+            .buttonStyle(PressableButtonStyle())
+            .disabled(isDisabled || !isVoiceModeEnabled)
+            .opacity(isVoiceModeEnabled ? 1 : 0.5)
+            .hermeyFocusQuiet()
+            #if os(macOS)
+            .help(voiceModeAccessibilityLabel)
+            #endif
+            .accessibilityLabel(voiceModeAccessibilityLabel)
+            .accessibilityIdentifier("composer.voicemode")
         }
     }
 

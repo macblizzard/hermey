@@ -7,6 +7,24 @@ import HermesKit
 import os
 #endif
 
+/// A turn the host reported as finished, with the reply it produced.
+///
+/// Published as one value rather than inferred from `transcript.count` or `isStreaming`, because
+/// the hands-free voice loop has to know *which* turn ended and what it said — speaking the wrong
+/// row, or speaking a turn that was interrupted, is the difference between a conversation and a
+/// machine that talks to itself. Both shells observe this one property.
+public struct TurnCompletion: Equatable, Sendable {
+    public let session: SessionID
+    public let text: String
+    public let at: Date
+
+    public init(session: SessionID, text: String, at: Date = Date()) {
+        self.session = session
+        self.text = text
+        self.at = at
+    }
+}
+
 /// Shared application state for both apps.
 ///
 /// One `AppModel` per window (macOS) or per app (iOS). It owns *what the user sees*:
@@ -149,6 +167,12 @@ public final class AppModel: ObservableObject {
     /// re-sent seal does not become a second bubble.
     private var sealedInterimKeys = Set<String>()
     @Published public private(set) var isStreaming = false
+
+    /// The newest turn the host reported as finished, and the reply it produced.
+    ///
+    /// The voice loop speaks only this: a completion for a turn it sent, arriving after it asked for
+    /// one. Nothing else — not a streamed delta, not a re-open of history — can make the app talk.
+    @Published public private(set) var lastCompletion: TurnCompletion?
 
     /// What each bot is doing, reduced from the events this client already receives.
     ///
@@ -6370,6 +6394,10 @@ public final class AppModel: ObservableObject {
             }
             setStreamed("")
             isStreaming = false
+            // One value, published after the row exists: the voice loop reads it to know the turn it
+            // sent is the turn it may now speak. `finalText` (not `text`) so a completion that
+            // carries no body still speaks what the streamed deltas built.
+            lastCompletion = TurnCompletion(session: session, text: finalText)
             reasoningText = ""
             sealedInterimKeys.removeAll()
             sealedCommentary.removeAll()

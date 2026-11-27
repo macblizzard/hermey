@@ -11,6 +11,7 @@ let package = Package(
         .library(name: "HermesAppKit", targets: ["HermesAppKit"]),
         .library(name: "HermesA2UI", targets: ["HermesA2UI"]),
         .library(name: "HermesCards", targets: ["HermesCards"]),
+        .library(name: "HermesVoice", targets: ["HermesVoice"]),
     ],
     dependencies: [
         // Agent-driven UI: the official A2UI Swift renderer. Pinned to the last Swift release
@@ -33,6 +34,10 @@ let package = Package(
         // present. Foundation + SwiftUI, HermesKit only — the theme is injected, so it never imports
         // the design system and can be tested without an app.
         .target(name: "HermesCards", dependencies: ["HermesKit"], path: "Sources/HermesCards"),
+        // Hands-free voice conversation: the VAD, the endpointing gate, the text policy and the
+        // AVFoundation capture, with no design-system dependency so the same loop runs in both
+        // shells. `HermesVoiceCore` above is the phone's *transport*; this is the conversation.
+        .target(name: "HermesVoice", path: "Sources/HermesVoice"),
         // Native agent-driven UI: decodes the inline A2UI surface a reply carries and draws it
         // with the official SDK's SwiftUI catalog. Isolated in its own target so the parser is
         // testable without a simulator and the app shells only depend on it where they draw.
@@ -58,6 +63,11 @@ let package = Package(
                 sources: ["AttachmentBudget.swift"]),
 
         .testTarget(name: "HermesKitTests", dependencies: ["HermesKit"], path: "Tests/HermesKitTests"),
+        // The conversation's own behaviour: the endpointing gate, the barge detector, the text
+        // policy and the WAV container, driven with synthesised levels instead of a microphone.
+        // A separate target from `HermesVoiceTests` above, which tests the phone's *transport*.
+        .testTarget(name: "HermesConversationTests", dependencies: ["HermesVoice"],
+                    path: "Tests/HermesConversationTests"),
         .testTarget(name: "HermesAppKitTests", dependencies: ["HermesAppKit"], path: "Tests/HermesAppKitTests"),
         .testTarget(name: "HermesCardsTests", dependencies: ["HermesCards"], path: "Tests/HermesCardsTests"),
         .testTarget(name: "HermesRenderTests", dependencies: ["HermesRender"], path: "Tests/HermesRenderTests"),

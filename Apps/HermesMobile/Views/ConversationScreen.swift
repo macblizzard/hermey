@@ -5,6 +5,7 @@ import HermesKit
 import HermesAppKit
 import HermesA2UI
 import HermeyUI
+import HermesVoice
 
 /// The conversation with one bot — one endless thread, always.
 ///
@@ -101,6 +102,8 @@ struct ConversationScreen: View {
     /// transcript lays its rows out over several frames, and a single scroll taken on the first
     /// frame lands near the top of the history instead of its end.
     @State private var openScrollSignal = 0
+    /// Backgrounding is an audio teardown: the loop reads this.
+    @Environment(\.scenePhase) private var scenePhase
     @State private var showAttachmentMenu = false
     /// The `/help` command opens the full catalogue rather than sending a help request to the host.
     @State private var showingCommandHelp = false
@@ -109,6 +112,9 @@ struct ConversationScreen: View {
     /// One voice controller per conversation screen: recording, transcription and
     /// playback share an audio session, so they must not race each other.
     @StateObject private var voice = VoiceController()
+    /// The hands-free conversation, one per open chat. It shares the microphone with `voice` by
+    /// taking turns: while the loop is on, the dictation control is disabled.
+    @StateObject private var voiceLoop = VoiceLoopController()
     /// Opt-in and never persisted: speaking replies is a per-visit choice.
     @State private var speakReplies = false
     @State private var lastSpokenEntryID: String?
@@ -271,6 +277,8 @@ struct ConversationScreen: View {
             Task { @MainActor in composerFocused = true }
         }
         .onDisappear {
+            // The microphone belongs to the conversation that is on screen; this one is leaving.
+            voiceLoop.stop()
             model.setVisibleBot(nil)
             // The open is this screen's business: leaving it cancels the host call and clears the
             // gate, so the next open (of this bot or another) starts clean. `endOpen` only acts when
@@ -281,6 +289,7 @@ struct ConversationScreen: View {
         }
         .task(id: bot.id) {
             voice.transport = app.makeVoiceTransport()
+            wireVoiceLoop()
             await openConversation()
         }
         // Another chat's unread is this screen's badge, so the rooms are swept while the
@@ -295,12 +304,29 @@ struct ConversationScreen: View {
             }
         }
         .onChange(of: app.store.host) { _, _ in
-            // A re-pair or host switch changes the endpoint the controller may talk to.
+            // A re-pair or host switch changes the endpoint the controller may talk to — and must
+            // not leave a conversation making requests to the host that just went away.
+            voiceLoop.stop()
             voice.cancel()
             voice.transport = app.makeVoiceTransport()
+            wireVoiceLoop()
         }
         .onChange(of: model.transcript.count) { _, _ in
             speakNewReplyIfNeeded()
+        }
+        // The completion is the loop's door into speaking: the row is already in the transcript,
+        // and the text is the host's own, not something re-read from the screen.
+        .onChange(of: model.lastCompletion) { _, completion in
+            guard let completion else { return }
+            voiceLoop.noteTurnCompleted(text: completion.text)
+        }
+        // Backgrounding a phone must close the microphone: iOS will suspend the capture anyway, and
+        // a loop that thinks it is listening while the stream is dead is worse than one that stops.
+        // Only `.background` — `.inactive` also fires for the notification shade and the app
+        // switcher, and a conversation that ends because a notification arrived is not a
+        // conversation. Calls and Siri are handled by the audio session's own interruption.
+        .onChange(of: scenePhase) { _, phase in
+            if phase == .background { voiceLoop.noteBackgrounded() }
         }
         .onChange(of: model.pendingRequests.count) { count in
             let arrived = hasLoaded && count > lastSeenRequestCount
@@ -1131,6 +1157,16 @@ struct ConversationScreen: View {
 
     private var composerArea: some View {
         VStack(spacing: 0) {
+            // The conversation's own line, above everything else in the composer: what the loop is
+            // doing, what it just heard, and the way out. It is the only place the phone says the
+            // microphone is open before the user has typed anything.
+            if voiceLoop.state.ownsMicrophone || voiceLoop.state == .failed {
+                VoiceLoopStatusBar(loop: voiceLoop)
+                    .padding(.horizontal, 12)
+                    .padding(.bottom, 6)
+                    .frame(maxWidth: .infinity)
+            }
+
             // The open did not finish inside its deadline, or the host refused it. This is *the*
             // difference between "stuck for 20 seconds" and "this screen is waiting, and here is
             // the tap that asks again" — the cached rows are still behind it.
@@ -1195,7 +1231,17 @@ struct ConversationScreen: View {
                      micSystemImage: micGlyph,
                      micTint: voice.state == .recording ? Tokens.danger : nil,
                      micAccessibilityLabel: micLabel,
-                     isMicEnabled: sessionID != nil,
+                     // One listener: while the conversation owns the microphone, dictation is
+                     // disabled rather than queued behind it.
+                     isMicEnabled: sessionID != nil && !voiceLoop.isActive,
+                     showsVoiceMode: true,
+                     voiceModeSystemImage: voiceLoop.state.glyph,
+                     voiceModeTint: voiceLoop.isActive ? Tokens.accent : nil,
+                     voiceModeAccessibilityLabel: voiceLoop.isActive
+                        ? "End the voice conversation"
+                        : "Start a hands-free voice conversation",
+                     isVoiceModeEnabled: sessionID != nil,
+                     onVoiceMode: { toggleVoiceMode() },
                      // The same pill the desktop draws, for this bot: tapping it opens the sheet
                      // the drawer's Model row opens (`BotModelSheet`), which writes through
                      // `configureModel` and refreshes `modelLabel` for the open bot.
@@ -1517,6 +1563,43 @@ struct ConversationScreen: View {
         model.transcript.last { $0.role == .assistant && !$0.text.isEmpty }
     }
 
+    /// The conversation's moves, all through the screen's own transport and model: no second
+    /// network stack, no second credential, nothing the composer's buttons do not already do.
+    private func wireVoiceLoop() {
+        let transport = app.makeVoiceTransport()
+        voiceLoop.wiring = VoiceLoopWiring(
+            transcribe: { audio, mimeType in
+                try await transport.transcribe(audio, mimeType)
+            },
+            synthesize: { text in
+                try await transport.synthesize(text)
+            },
+            sendTurn: { text in
+                // Appended, never replacing: anything typed while the microphone was open belongs
+                // to the same message.
+                let existing = model.draft.trimmingCharacters(in: .whitespacesAndNewlines)
+                model.draft = existing.isEmpty ? text : existing + " " + text
+                Task { await model.send() }
+            },
+            interruptTurn: {
+                Task { await model.interrupt() }
+            },
+            canRun: { model.selectedSessionID != nil }
+        )
+    }
+
+    /// One tap starts the conversation; the same tap (or a spoken "stop") ends it.
+    private func toggleVoiceMode() {
+        if voiceLoop.isActive {
+            voiceLoop.stop()
+            return
+        }
+        guard sessionID != nil else { return }
+        // Close dictation first: one microphone, one listener.
+        if voice.state != .idle { voice.cancel() }
+        voiceLoop.start()
+    }
+
     private func toggleRecording() {
         // Refresh first: the pairing may have changed since this screen appeared.
         voice.transport = app.makeVoiceTransport()
@@ -1539,6 +1622,9 @@ struct ConversationScreen: View {
     /// Speak a reply only when it is new and the toggle was already on. The same row is
     /// never spoken twice, and toggling on marks the current reply as seen.
     private func speakNewReplyIfNeeded() {
+        // The conversation speaks for itself. Two speech paths on one transcript would read the
+        // same reply twice, in two voices, over each other.
+        guard !voiceLoop.isActive else { return }
         guard speakReplies, voice.state == .idle else { return }
         guard let reply = lastAssistantReply,
               !reply.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }

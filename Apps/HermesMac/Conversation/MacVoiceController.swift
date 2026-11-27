@@ -26,6 +26,8 @@ enum MacVoiceFailure: LocalizedError, Equatable {
     case unsupportedAudio
     case emptyRecording
     case emptyTranscript
+    case emptyText
+    case textTooLong
     case malformedResponse
     /// The host's own one-line reason for a provider failure (already redacted there).
     case providerUnavailable(String)
@@ -50,6 +52,10 @@ enum MacVoiceFailure: LocalizedError, Equatable {
             return "Nothing was recorded. Check the input device and try again."
         case .emptyTranscript:
             return "The host heard nothing in that recording."
+        case .emptyText:
+            return "There is nothing to say."
+        case .textTooLong:
+            return "That reply is too long to speak."
         case .malformedResponse:
             return "The host sent a voice response this app does not understand."
         case .providerUnavailable(let message):
@@ -87,6 +93,12 @@ enum MacVoiceWire {
     /// One minute, matching the phone. At 32 kbit/s that is ≈240 KB — far inside the 10 MiB
     /// ceiling, so the size limit is an abuse bound and never a UX bound.
     static let maxDuration: TimeInterval = 60
+    /// The bridge's `MAX_TEXT_CHARS`: one synthesize request may carry this many characters. The
+    /// loop splits a reply into sentences well under it, so this only fires on a pathological input.
+    static let maxTextCharacters = 4_000
+    /// What the bridge returns from `/v1/voice/synthesize`, and the only type `AVAudioPlayer` is
+    /// handed here.
+    static let synthesisMimeType = "audio/mpeg"
 
     /// Local mirrors of the host's limits: fail fast with a sentence to act on instead of
     /// uploading bytes the bridge would reject anyway.
@@ -168,8 +180,56 @@ struct MacVoiceService {
         // upgrade, so there is nothing left to authenticate a second request with.
         guard !address.isTicketOnly else { throw MacVoiceFailure.devicePairingRequired }
 
-        let origin = try address.apiOrigin()
         let body = try MacVoiceWire.requestBody(audio: audio, mimeType: mimeType)
+        let (status, data) = try await post(path: "v1/voice/transcribe", body: body)
+        switch MacVoiceWire.outcome(status: status, body: data) {
+        case .success(let transcript):
+            return transcript
+        case .failure(let failure):
+            throw failure
+        }
+    }
+
+    /// `POST /v1/voice/synthesize` — the other half of a spoken turn.
+    ///
+    /// The bridge answers `{mime_type, content_base64}` with an mp3, capped at the same 10 MiB it
+    /// accepts. A 2xx that does not decode is `malformedResponse`, never silence: a proxy's HTML
+    /// error page must not read as "the host said nothing".
+    func synthesize(text: String) async throws -> Data {
+        let spoken = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !spoken.isEmpty else { throw MacVoiceFailure.emptyText }
+        guard spoken.count <= MacVoiceWire.maxTextCharacters else { throw MacVoiceFailure.textTooLong }
+        guard !address.isTicketOnly else { throw MacVoiceFailure.devicePairingRequired }
+
+        let body = try JSONSerialization.data(withJSONObject: ["text": spoken])
+        let (status, data) = try await post(path: "v1/voice/synthesize", body: body)
+        switch status {
+        case 200..<300:
+            guard let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                  object["mime_type"] as? String == MacVoiceWire.synthesisMimeType,
+                  let base64 = object["content_base64"] as? String,
+                  let audio = Data(base64Encoded: base64),
+                  !audio.isEmpty else {
+                throw MacVoiceFailure.malformedResponse
+            }
+            return audio
+        case 401:
+            throw MacVoiceFailure.unauthorized
+        case 413:
+            throw MacVoiceFailure.tooLarge
+        default:
+            if let detail = MacVoiceWire.detail(from: data) {
+                throw MacVoiceFailure.providerUnavailable(String(detail.prefix(160)))
+            }
+            throw MacVoiceFailure.providerUnavailable("The host's voice service failed (HTTP \(status)).")
+        }
+    }
+
+    /// One request, one freshly minted single-use ticket, the redirect check, and the timeout — the
+    /// part both endpoints share. Returns the status with the body so each caller maps its own
+    /// contract instead of sharing one error table that fits neither.
+    private func post(path: String, body: Data) async throws -> (Int, Data) {
+        let origin = try address.apiOrigin()
         let ticket: String
         if let mint = freshTicket {
             ticket = try await mint()
@@ -177,7 +237,7 @@ struct MacVoiceService {
             ticket = try await address.mintedTicket()
         }
 
-        var request = URLRequest(url: origin.appendingPathComponent("v1/voice/transcribe"))
+        var request = URLRequest(url: origin.appendingPathComponent(path))
         request.httpMethod = "POST"
         request.timeoutInterval = 45
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
@@ -200,12 +260,7 @@ struct MacVoiceService {
         guard Self.sameEndpoint(http.url, request.url) else {
             throw MacVoiceFailure.malformedResponse
         }
-        switch MacVoiceWire.outcome(status: http.statusCode, body: data) {
-        case .success(let transcript):
-            return transcript
-        case .failure(let failure):
-            throw failure
-        }
+        return (http.statusCode, data)
     }
 
     private static func sameEndpoint(_ lhs: URL?, _ rhs: URL?) -> Bool {
