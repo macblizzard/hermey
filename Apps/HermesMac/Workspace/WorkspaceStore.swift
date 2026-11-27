@@ -117,6 +117,23 @@ final class WorkspaceStore: ObservableObject {
     /// by that pane. It lives on the store because every verb the keys run is a verb of this store.
     let shortcuts = ShortcutCenter()
 
+    /// Whether the hands-free conversation is running in the composer on screen.
+    ///
+    /// The loop belongs to `MacComposerBar` — one microphone per conversation, torn down with the
+    /// bar — so the menu cannot read it, and a second controller is the one thing the loop forbids.
+    /// The bar mirrors its loop's `isActive` here for the same reason it mirrors `isSidebarHidden`:
+    /// the menu's item has to read "Stop Voice Conversation" while the conversation is open, and a
+    /// title that flips is how the other state-dependent rows already say so. Nothing dispatches
+    /// from this bit — the key still posts a request to the composer (`VoiceShortcutDirectory`).
+    @Published private(set) var isVoiceConversationRunning = false
+
+    /// Called by the composer when its loop opens or closes the microphone. A no-op when the
+    /// answer has not changed, so a phase change inside one turn does not rebuild the menu.
+    func noteVoiceConversationRunning(_ running: Bool) {
+        guard isVoiceConversationRunning != running else { return }
+        isVoiceConversationRunning = running
+    }
+
     private let pairingStore = PairingStore()
     private var latencyTask: Task<Void, Never>?
     /// Unsent composer text, parked under the bot it was typed for. A draft has no profile on

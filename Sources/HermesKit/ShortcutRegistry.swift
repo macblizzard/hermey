@@ -347,6 +347,14 @@ public enum ShortcutRegistry {
             defaultCombo: ShortcutCombo(".", .command),
             menuItemTitles: ["Interrupt Turn"]),
         ShortcutAction(
+            id: "voice.conversation",
+            title: "Voice Conversation",
+            detail: "Hands-free talk with the bot on screen: speak, hear the answer, and be listening again. The same key ends it.",
+            group: .conversation,
+            defaultCombo: ShortcutCombo("v", .option, .command),
+            menuItemTitles: ["Start Voice Conversation", "Stop Voice Conversation"],
+            note: "Mac only: the phone has no keyboard and reaches this through the composer's audio control instead."),
+        ShortcutAction(
             id: "chat.refresh",
             title: "Refresh Conversation",
             detail: "Re-read the conversation from the host — a room's rows, or this bot's session.",
@@ -387,6 +395,14 @@ public enum ShortcutRegistry {
     /// screen**, and the transcript's own right-click menu still offers the same verbs on any row —
     /// these are the keyboard's way into them, not a second menu.
     private static let message: [ShortcutAction] = [
+        ShortcutAction(
+            id: "voice.dictate",
+            title: "Dictate a Message",
+            detail: "Record one message and put the words in the draft — nothing is sent. Press it again to stop and transcribe.",
+            group: .message,
+            defaultCombo: ShortcutCombo("d", .control, .command),
+            menuItemTitles: ["Dictate a Message"],
+            note: "Mac only: the phone has no keyboard and holds the composer's audio control instead."),
         ShortcutAction(
             id: "message.actions",
             title: "Message Actions…",

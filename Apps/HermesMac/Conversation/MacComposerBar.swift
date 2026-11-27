@@ -1,4 +1,5 @@
 import AppKit
+import Combine
 import HermesAppKit
 import HermesKit
 import HermesVoice
@@ -210,7 +211,7 @@ struct MacComposerBar: View {
                                               tint: voiceControlTint,
                                               label: voiceControlLabel,
                                               isEnabled: canRecordVoice && !voice.isBusy,
-                                              onTap: { voiceControlTap() },
+                                              onTap: { toggleVoiceMode() },
                                               onHold: { voiceControlHold() })
                         : nil,
                      hint: hint,
@@ -258,6 +259,22 @@ struct MacComposerBar: View {
         // No canvas strip: the transcript runs under the capsule and fades into it. The pane owns
         // the fade and the height measurement, because the transcript needs both.
         .onAppear { wireVoice() }
+        // ⌥⌘V and ⌃⌘D, from the menu bar. The loop and the recorder are this bar's — one
+        // microphone per conversation — so the keys arrive as requests and run the same two
+        // methods the control's own gestures run (`VoiceShortcutDirectory`).
+        .onReceive(NotificationCenter.default.publisher(for: .voiceConversationToggleRequested)) { _ in
+            toggleVoiceMode()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .voiceDictationRequested)) { _ in
+            toggleDictation()
+        }
+        // The menu's item says "Stop Voice Conversation" while the loop owns the microphone, and a
+        // menu cannot read this bar's controller: the bar is the loop's only owner, so it mirrors
+        // the one bit the title needs. Every exit from the loop — a spoken "stop", a failure, the
+        // bar going away — changes `state`, so this is the one place that has to be right.
+        .onChange(of: loop.state) { _, _ in
+            store.noteVoiceConversationRunning(loop.isActive)
+        }
         // A re-pair must not leave the controller minting tickets for the old host, and must not
         // leave a conversation open against one that no longer exists.
         .onChange(of: store.pairing) { _, _ in
@@ -282,6 +299,9 @@ struct MacComposerBar: View {
         .onDisappear {
             voice.cancel()
             loop.stop()
+            // The bar is the only writer of this bit, so it must clear it as it leaves: a menu
+            // that still offered "Stop Voice Conversation" for a closed microphone would be lying.
+            store.noteVoiceConversationRunning(false)
         }
         .sheet(isPresented: $showingCommandHelp) {
             HermesCommandsHelpSheet { command in
@@ -353,13 +373,17 @@ struct MacComposerBar: View {
         store.openModel(bot)
     }
 
-    /// A tap on the one audio control: the hands-free conversation, and only it.
+    /// A tap on the one audio control, and ⌥⌘V: the hands-free conversation, and only it.
     ///
     /// It ends the conversation it started, stops a dictation that was started by the other
     /// gesture (sending the words to the field, as a dictation always does), and otherwise opens
     /// the loop. A tap can never leave two captures running: the loop is closed before dictation
     /// begins and dictation is cancelled before the loop begins.
-    private func voiceControlTap() {
+    ///
+    /// The menu's Voice Conversation item calls this same method — through
+    /// `VoiceShortcutDirectory`, because the loop is this bar's — so the key and the gesture cannot
+    /// drift into two different start paths.
+    private func toggleVoiceMode() {
         if loop.isActive {
             loop.stop()
             return
@@ -375,7 +399,7 @@ struct MacComposerBar: View {
         loop.start()
     }
 
-    /// A hold on the same control: dictation.
+    /// A hold on the same control: dictation, while the finger is down.
     ///
     /// One recording, transcribed into the draft, and nothing sent. The loop is closed first for
     /// the same reason in the other direction — one microphone, one listener — and a hold while a
@@ -385,6 +409,20 @@ struct MacComposerBar: View {
         guard canRecordVoice, !voice.isBusy else { return }
         guard !voice.isRecording else { return }
         voice.startRecording()
+    }
+
+    /// ⌃⌘D, from the menu bar: the hold, as a key.
+    ///
+    /// A key has no second half the way a finger does, so it carries both promises: the first press
+    /// starts the recording through the hold's own method, the second stops it and drops the words
+    /// in the draft. That is the same pair the control's gestures run — `startRecording()` and
+    /// `stopAndTranscribe()` — never a second capture.
+    private func toggleDictation() {
+        if voice.isRecording {
+            voice.stopAndTranscribe()
+            return
+        }
+        voiceControlHold()
     }
 
     private var pendingAttachmentsBar: some View {

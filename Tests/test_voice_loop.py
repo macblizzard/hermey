@@ -65,9 +65,10 @@ class OneOwner(unittest.TestCase):
         for shell, loop in ((MAC_BAR, "loop"), (PHONE, "voiceLoop")):
             hold = swift_body(shell, "private func voiceControlHold()")
             self.assertIn(f"if {loop}.isActive {{ {loop}.stop() }}", hold)
-        # The tap ends the conversation it started: inline on the Mac, through the same
-        # `toggleVoiceMode` the old loop control used on the phone.
-        mac_tap = swift_body(MAC_BAR, "private func voiceControlTap()")
+        # The tap ends the conversation it started: the Mac's tap and ⌥⌘V are one method,
+        # `toggleVoiceMode`; the phone's tap goes through the same `toggleVoiceMode` the old loop
+        # control used.
+        mac_tap = swift_body(MAC_BAR, "private func toggleVoiceMode()")
         self.assertIn("if loop.isActive", mac_tap)
         self.assertIn("voice.cancel()", mac_tap)
         phone_tap = swift_body(PHONE, "private func voiceControlTap()")
@@ -270,10 +271,11 @@ class Visibility(unittest.TestCase):
         self.assertIn("VoicePolicy.stopHint()", BAR)
 
     def test_the_composer_carries_the_one_control_on_both_platforms(self) -> None:
-        for shell in (MAC_BAR, PHONE):
+        # The Mac's tap is `toggleVoiceMode` (the ⌥⌘V method); the phone's is its gesture's name.
+        for shell, tap in ((MAC_BAR, "toggleVoiceMode()"), (PHONE, "voiceControlTap()")):
             self.assertIn("voice: ", shell)
             self.assertIn("ComposerVoiceButton(systemImage:", shell)
-            self.assertIn("onTap: { voiceControlTap() }", shell)
+            self.assertIn(f"onTap: {{ {tap} }}", shell)
             self.assertIn("onHold: { voiceControlHold() }", shell)
         self.assertIn("ComposerVoiceButton", COMPOSER)
         self.assertIn("private var voiceControl: some View", COMPOSER)

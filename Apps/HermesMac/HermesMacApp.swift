@@ -267,6 +267,24 @@ struct WorkspaceCommands: Commands {
             .hermeyShortcut("turn.interrupt", using: shortcuts)
             .disabled(!store.canInterrupt)
 
+            // ⌥⌘V / ⌃⌘D — the keyboard's copy of the composer's one audio control: the tap that
+            // opens the hands-free conversation, and the hold that dictates into the draft. The
+            // loop is the composer's (one microphone per conversation, wired to the bot on screen
+            // and torn down with the bar), so neither item holds it: each posts a request
+            // (`VoiceShortcutDirectory`) and the bar runs the same method its gesture runs.
+            //
+            // Never disabled, for the lesson ⌘E carries: a disabled item swallows its key
+            // equivalent for the rest of the run. The action itself does nothing without a session.
+            Button(store.isVoiceConversationRunning ? "Stop Voice Conversation" : "Start Voice Conversation") {
+                VoiceShortcutDirectory.requestConversationToggle()
+            }
+            .hermeyShortcut("voice.conversation", using: shortcuts)
+
+            Button("Dictate a Message") {
+                VoiceShortcutDirectory.requestDictation()
+            }
+            .hermeyShortcut("voice.dictate", using: shortcuts)
+
             Divider()
 
             // ⌘F — find inside the conversation on screen. It lives in the menu because a key you

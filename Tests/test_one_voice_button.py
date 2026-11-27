@@ -78,7 +78,11 @@ class OneControlInTheRow(unittest.TestCase):
     def test_each_shell_supplies_one_control_with_both_gestures(self) -> None:
         for name, shell, _ in SHELLS:
             self.assertEqual(shell.count("ComposerVoiceButton("), 1, name)
-            self.assertIn("onTap: { voiceControlTap() }", shell, name)
+            # The Mac's tap is also ⌥⌘V's method, so it carries the verb's name: the gesture and
+            # the menu item are one path (`toggleVoiceMode`). The phone has no keyboard and keeps
+            # the gesture's own name.
+            tap = "toggleVoiceMode()" if name == "Mac" else "voiceControlTap()"
+            self.assertIn(f"onTap: {{ {tap} }}", shell, name)
             self.assertIn("onHold: { voiceControlHold() }", shell, name)
 
     def test_the_dictation_controller_survives_the_merge(self) -> None:
@@ -106,7 +110,11 @@ class TwoGestures(unittest.TestCase):
 
     def test_the_tap_opens_the_conversation(self) -> None:
         for name, shell, loop in SHELLS:
-            tap = swift_body(shell, "private func voiceControlTap()")
+            # The Mac's tap is `toggleVoiceMode` (⌥⌘V is the same method); the phone's tap is the
+            # gesture's name and routes through its own `toggleVoiceMode`.
+            signature = ("private func toggleVoiceMode()" if name == "Mac"
+                         else "private func voiceControlTap()")
+            tap = swift_body(shell, signature)
             if name == "Mac":
                 self.assertIn(f"{loop}.start()", tap)
             else:
@@ -138,7 +146,7 @@ class OneMicrophone(unittest.TestCase):
             self.assertLess(stop, start, f"{name}: the loop is still open when dictation starts")
 
     def test_a_tap_ends_dictation_before_it_listens(self) -> None:
-        mac = swift_body(MAC_BAR, "private func voiceControlTap()")
+        mac = swift_body(MAC_BAR, "private func toggleVoiceMode()")
         self.assertLess(mac.index("voice.cancel()"), mac.index("loop.start()"))
         phone = swift_body(PHONE, "private func toggleVoiceMode()")
         self.assertLess(phone.index("voice.cancel()"), phone.index("voiceLoop.start()"))
@@ -149,7 +157,7 @@ class OneMicrophone(unittest.TestCase):
         body = swift_body(PHONE, "private func voiceControlTap()")
         self.assertLess(body.index("if voice.state == .recording"),
                         body.index("toggleVoiceMode()"))
-        mac = swift_body(MAC_BAR, "private func voiceControlTap()")
+        mac = swift_body(MAC_BAR, "private func toggleVoiceMode()")
         self.assertLess(mac.index("if voice.isRecording"), mac.index("loop.start()"))
 
 
