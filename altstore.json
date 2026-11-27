@@ -22,14 +22,14 @@
       "screenshots": [],
       "versions": [
         {
-          "version": "0.1.689",
-          "buildVersion": "689",
-          "date": "2026-11-27T01:13:29Z",
-          "localizedDescription": "Hands-free voice conversations: tap the waveform, speak, hear the answer, keep talking - with barge-in, a spoken stop, and the mic released on every exit. Plus the desktop pet now follows a saved avatar, and the glass halo no longer bands.",
-          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.689/Hermey-0.1.689-b689.ipa",
-          "size": 6300668,
+          "version": "0.1.690",
+          "buildVersion": "690",
+          "date": "2026-11-27T02:19:33Z",
+          "localizedDescription": "iPhone voice fix candidate: the hands-free control is a waveform in every state, a failure now prints its reason instead of 'Voice stopped', and every step of the start path is logged under voice.",
+          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.690/Hermey-0.1.690-b690.ipa",
+          "size": 6307331,
           "minOSVersion": "17.0",
-          "sha256": "4f8f7298281e2aa26fb51d7768f5001458b833f19f474d8f9f11267fdd5fb988"
+          "sha256": "27514570d65e0b6d49c99aab35a9c62f651e45ff24867313383ed414dad09d11"
         }
       ],
       "appPermissions": {
@@ -43,10 +43,10 @@
   ],
   "news": [
     {
-      "title": "Hermes 0.1.689 (689)",
-      "identifier": "hermes-0.1.689-689",
-      "caption": "Hands-free voice conversations: tap the waveform, speak, hear the answer, keep talking - with barge-in, a spoken stop, and the mic released on every exit. Plus the desktop pet now follows a saved avatar, and the glass halo no longer bands.",
-      "date": "2026-11-27T01:13:29Z",
+      "title": "Hermes 0.1.690 (690)",
+      "identifier": "hermes-0.1.690-690",
+      "caption": "iPhone voice fix candidate: the hands-free control is a waveform in every state, a failure now prints its reason instead of 'Voice stopped', and every step of the start path is logged under voice.",
+      "date": "2026-11-27T02:19:33Z",
       "tintColor": "#9A9AA0"
     }
   ],
