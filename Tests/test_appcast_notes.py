@@ -54,10 +54,43 @@ class TheNotesComeFromTheChangelog(unittest.TestCase):
         self.assertNotIn(f"## [{KNOWN_VERSION}]", notes)
 
     def test_an_unknown_version_falls_back_to_unreleased(self) -> None:
-        notes = publish_altstore.changelog_notes("0.0.0-not-a-release")
-        self.assertIn("### Added", notes)
-        # ...and it is clipped, because `[Unreleased]` between releases is a document, not a dialog.
-        self.assertLessEqual(len(notes), publish_altstore.MAX_NOTE_CHARS + 4)
+        """An unknown version takes the `[Unreleased]` block, and nothing else does.
+
+        The 2026-11-27 audit restructure gave every recorded entry a version heading (newest first),
+        so the live file's `[Unreleased]` block is empty — nothing is pending. The fallback logic is
+        what the publisher depends on, so it is tested against a stub changelog rather than the
+        file's present state.
+        """
+        stub = (
+            "# Changelog\n"
+            "\n"
+            "## [0.1.2] — 2026-01-02\n"
+            "\n"
+            "### Fixed\n"
+            "- known fix\n"
+            "\n"
+            "## [Unreleased]\n"
+            "\n"
+            "### Added\n"
+            "- pending thing\n"
+        )
+        with tempfile.TemporaryDirectory() as scratch:
+            path = pathlib.Path(scratch) / "CHANGELOG.md"
+            path.write_text(stub, encoding="utf-8")
+            with mock.patch.object(publish_altstore, "CHANGELOG", path):
+                notes = publish_altstore.changelog_notes("0.0.0-not-a-release")
+                self.assertIn("### Added", notes)
+                self.assertIn("pending thing", notes)
+                self.assertNotIn("known fix", notes)
+                # ...and it is clipped, because `[Unreleased]` between releases is a document, not a dialog.
+                self.assertLessEqual(len(notes), publish_altstore.MAX_NOTE_CHARS + 4)
+                # A version that has its own section is never answered by the block above it.
+                known = publish_altstore.changelog_notes("0.1.2")
+                self.assertIn("known fix", known)
+                self.assertNotIn("pending thing", known)
+        # The live file's `[Unreleased]` is empty today: an unknown version then answers nothing,
+        # and the caller's own placeholder takes over — honestly empty, not invented.
+        self.assertEqual(publish_altstore.changelog_notes("0.0.0-not-a-release"), "")
 
     def test_a_changelog_that_is_not_there_is_not_an_exception(self) -> None:
         with mock.patch.object(publish_altstore, "CHANGELOG",
