@@ -7,6 +7,18 @@ Each release's section may carry both its release notes and the per-change entri
 recorded as the work landed; entries before 0.1.610 were given their version headings
 from the repository's history and the published release pages.
 
+## [0.1.694] — 2026-11-27
+
+### Fixed
+- **The update prompt appears without pressing anything.** A cold start already asked, but on iOS "starting the app"
+  is nearly always a resume, and the resume path was throttled to one check a day — so a release published after
+  the last check stayed invisible until tomorrow. Launch and every return to the front now ask (a repeat within
+  15 minutes of the same session is still skipped).
+- **Check now can no longer say "up to date" when the feed has something newer.** A stored "highest offered build"
+  was allowed to refuse a fresh document; it now cannot veto anything. The row also stopped using one sentence for
+  six different outcomes — up to date, offered, newest entry not installable here, feed unreachable, declined, or
+  already in flight are each named, and every check logs `advertised=… installable=… installed=… offer=…`.
+
 ## [0.1.693] — 2026-11-27
 
 ### Fixed
