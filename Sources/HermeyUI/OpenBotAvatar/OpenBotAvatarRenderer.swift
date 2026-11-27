@@ -224,11 +224,18 @@ public enum OpenBotAvatarRenderer {
     }
 
     /// The whole transform the body's front plane is drawn with: the plane at z = 0, the body's own
-    /// motion, and the viewport.
+    /// motion, **its give-way to a mark**, and the viewport.
     ///
-    /// One place, three readers — the painted ramp's silhouette, the glass shader's coverage fill, and
-    /// the numbers that fill describes itself with (`BotAvatarGlassSurface.make`) — so the surface the
-    /// shader lights is the surface the `Canvas` filled, whichever way the pose has turned it.
+    /// One place, four readers — the painted ramp's silhouette, the glass shader's coverage fill, the
+    /// numbers that fill describes itself with (`BotAvatarGlassSurface.make`), and the mask's key
+    /// (`OpenBotAvatarPose.silhouetteKey`) — so the surface the shader lights is the surface the
+    /// `Canvas` filled, whichever way the pose has turned it.
+    ///
+    /// The shrink is the slice stack's (`draw`'s `shrink`), applied in the body's own coordinates
+    /// about the pivot, first in the chain: a body under a mark is drawn *smaller*, and a transform
+    /// that left it full size drew the mark at the size of the face it had replaced. `bodyScale` is 1
+    /// unless a pose carries a mark — which none of the eight built-in states does — so nothing about
+    /// their drawing changes.
     static func bodyTransform(_ model: OpenBotAvatarModel, pose: OpenBotAvatarPose,
                               size: CGSize) -> CGAffineTransform {
         let side = min(size.width, size.height)
@@ -238,7 +245,11 @@ public enum OpenBotAvatarRenderer {
             .scaledBy(x: unit, y: unit)
         let basis = ViewBasis(yaw: pose.yaw, pitch: pose.pitch)
         let base = CGPoint(x: model.volume.box.center.x, y: model.volume.box.maxY)
-        return planeTransform(basis: basis, z: 0, pivot: model.volume.pivot)
+        let bodyScale = OpenBotAvatarMarks.bodyScale(pose.marks)
+        let shrink = bodyScale < 1 ? scaleAbout(pivot: model.volume.pivot, by: bodyScale)
+                                   : CGAffineTransform.identity
+        return shrink
+            .concatenating(planeTransform(basis: basis, z: 0, pivot: model.volume.pivot))
             .concatenating(rootTransform(pose: pose, base: base))
             .concatenating(viewport)
     }

@@ -21,9 +21,10 @@ import Metal
 ///
 /// ## The rule
 ///
-/// Shader **when all four hold**: the material is glass; the surface is an app surface (the process
+/// Shader **when all five hold**: the material is glass; the surface is an app surface (the process
 /// has a Metal device *and* the MSL source compiled into a library in it); Reduce Transparency is
-/// off; and the body is at least `BotAvatarGlassShader.minimumSide` points across.
+/// off; the pose does not hand the body to a mark; and the body is at least
+/// `BotAvatarGlassShader.minimumSide` points across.
 ///
 /// Canvas otherwise — and "otherwise" is not an error path. It is the drawing the Live Activity
 /// compiles (its bundle carries neither the shader's source nor a library, so `isAvailable` is false
@@ -50,17 +51,25 @@ public enum BotAvatarGlassRoute: Hashable, Sendable {
 
     /// **The one shader-versus-Canvas decision.** Everything above and below reads its answer.
     ///
-    /// `side` is the drawn side of the body in points, `material` its stored material, and
+    /// `side` is the drawn side of the body in points, `material` its stored material,
     /// `reduceTransparency` the accessibility setting — a person who has asked for less transparency
-    /// gets the calm painted surface and no refraction at all, whatever their Mac can do.
+    /// gets the calm painted surface and no refraction at all, whatever their Mac can do — and
+    /// `carriesMark` whether the pose can hand the body over to a mark.
     public static func decide(material: BotAvatarMaterial,
                               side: Double,
-                              reduceTransparency: Bool) -> BotAvatarGlassRoute {
+                              reduceTransparency: Bool,
+                              carriesMark: Bool = false) -> BotAvatarGlassRoute {
         // Solid is a flat fill drawn by the volume's own slices, and matte and metal are paints, not
         // glass: the shader is glass's surface and nothing else may reach it.
         guard material == .glass else { return .canvas }
         // A calm surface, asked for: the painted glass, never a refracting one.
         guard !reduceTransparency else { return .canvas }
+        // A body under a mark: the shader's pass is one lit silhouette, so it can neither draw the
+        // mark (the painter's, in the body's own material) nor shrink the body under it
+        // (`OpenBotAvatarMarks.bodyScale`, which this route's frame does apply to the transform). Left
+        // to the shader it drew a full-size body with a full-size mark over it — the mark at the size
+        // of the face it was meant to have replaced. The painted glass draws both, so it takes them.
+        guard !carriesMark else { return .canvas }
         // Below this the shader's speculars are sub-pixel and its refraction is one pixel of tint.
         guard side >= BotAvatarGlassShader.minimumSide else { return .canvas }
         // The process itself: a Metal device, the shader compiled in it, and not a preview.
@@ -76,8 +85,10 @@ public enum BotAvatarGlassRoute: Hashable, Sendable {
     /// that with its own copy of the four guards. There is still one decision — this calls it.
     public static func drawn(material: BotAvatarMaterial,
                              side: Double,
-                             reduceTransparency: Bool) -> BotAvatarGlassRoute {
-        decide(material: material, side: side, reduceTransparency: reduceTransparency)
+                             reduceTransparency: Bool,
+                             carriesMark: Bool = false) -> BotAvatarGlassRoute {
+        decide(material: material, side: side, reduceTransparency: reduceTransparency,
+               carriesMark: carriesMark)
     }
 }
 

@@ -30,10 +30,21 @@ import SwiftUI
 /// disagreeing with the chat header about which face a bot wears.
 ///
 /// **Motion.** Sampled at 10 Hz — the same cadence the pets animate at — through a `Canvas`, from a
-/// pose that is a pure function of time. Under Reduce Motion, below `animatingFrom`, in a background
-/// window, or when `animates` is false, it holds the rest pose and costs nothing. The drawing itself
-/// never allocates geometry: the body's cross-sections, the ribbon hoops' reach and the outline are
-/// built once per definition and cached (`OpenBotAvatarModel`), and a frame only transforms them.
+/// pose that is a pure function of time. Under Reduce Motion, below `animatingFrom`, when `animates`
+/// is false, or when the surface is not on screen, it holds the rest pose and costs nothing. The
+/// drawing itself never allocates geometry: the body's cross-sections, the ribbon hoops' reach and
+/// the outline are built once per definition and cached (`OpenBotAvatarModel`), and a frame only
+/// transforms them.
+///
+/// "Not on screen" is `gate`'s answer, and it has two shapes because the app hosts this face in two
+/// kinds of place. `BotAvatarView` lives in a window of a real scene, where `scenePhase` is the truth
+/// (`BotAvatarMotion` folds it into `animates` too, so the shape face and the drawn one stop
+/// together). The desktop pet does not: its face is the root of a bare `NSHostingView` inside a
+/// borderless `NSPanel` (`DesktopPetController`), which is no scene at all — the environment answers
+/// `ScenePhase`'s default, `.background`, for ever. Read as the only gate that froze the pet's face
+/// solid at the rest pose while its own hop and blink loops ran, a state disagreeing with what the
+/// window was actually doing. So a host that owns its window says so (`gate: .host`) and the answer
+/// is its `animates`; nothing else changed.
 ///
 /// That is the face's *breathing*. Where the app shows a bot beside its name, `BotAvatarView` also
 /// performs the shared face's motion over it (the hop, the flip, the darts) and hands the eye pose
@@ -56,6 +67,9 @@ public struct OpenBotAvatarView: View {
     public var backdrop: OpenBotAvatarBackdrop?
     /// Whether this avatar may move at all (a long list passes false for its idle rows).
     public var animates: Bool
+    /// Who answers "is this face on screen": SwiftUI's `scenePhase` by default, or the host that
+    /// hosts it in a window of its own (`OpenBotAvatarMotionGate`).
+    public var gate: OpenBotAvatarMotionGate
     public var reduceMotion: Bool
     /// The size below which the face holds still. The pets' floor, so a 16 pt row icon is static.
     public var animatingFrom: Double
@@ -86,6 +100,7 @@ public struct OpenBotAvatarView: View {
                 size: CGFloat = 36,
                 backdrop: OpenBotAvatarBackdrop? = nil,
                 animates: Bool = true,
+                gate: OpenBotAvatarMotionGate = .scenePhase,
                 reduceMotion: Bool = false,
                 animatingFrom: Double = 24,
                 label: String? = nil,
@@ -98,6 +113,7 @@ public struct OpenBotAvatarView: View {
         self.size = size
         self.backdrop = backdrop
         self.animates = animates
+        self.gate = gate
         self.reduceMotion = reduceMotion
         self.animatingFrom = animatingFrom
         self.label = label
@@ -110,15 +126,23 @@ public struct OpenBotAvatarView: View {
 
     public var body: some View {
         let still = reduceMotion || systemReduceMotion
-        let moves = animates && !still && Double(size) >= animatingFrom && scenePhase == .active
+        // `gate` decides who is asked whether the face is on screen. A host that passes `.host` has
+        // already folded its window's own visibility into `animates` (the pet: occlusion, from
+        // `PetModel.isVisible`), so asking `scenePhase` here as well would answer `.background` for a
+        // window that has no scene above it — and hold a pet's face still while its body hopped.
+        let onScreen = gate == .host || scenePhase == .active
+        let moves = animates && !still && Double(size) >= animatingFrom && onScreen
         let resolvedColor = color.flatMap(OpenBotAvatarColor.color(hex:)) ?? OpenBotAvatarRenderer.defaultColor
         let seed = BotAvatarHash.shippedHash(definition.id)
         let surface = backdrop ?? .themed(dark: colorScheme != .light)
         // **The decision**, once, from the surface: what draws this bot's glass — the Metal body or
         // the painted material. Nothing below asks again; `frame` follows it and the renderer follows
-        // the pass it is given.
+        // the pass it is given. `carriesMark` is the one answer the state can give without a pose:
+        // the eight built-in states are mark-free (a guard refuses one), and a definition of a
+        // host's own may hand the body to a mark, which the shader's pass cannot draw.
         let route = BotAvatarGlassRoute.decide(material: material, side: Double(size),
-                                               reduceTransparency: reduceTransparency)
+                                               reduceTransparency: reduceTransparency,
+                                               carriesMark: state.mayCarryMark)
 
         return Group {
             if let model = OpenBotAvatarModel.model(for: definition) {
@@ -206,14 +230,18 @@ public struct OpenBotAvatarView: View {
                                                still: still, time: time, pass: .behind)
                 }
                 // The body: the reference's lit, refracting surface, drawn by the runtime shader over
-                // the same silhouette the `Canvas` route fills. `maskKey` is the body itself, not the
-                // frame: the drawer keeps that silhouette's texture, and it must be rebuilt when the
-                // *shape* changes (a preset, a paste, a save) or the new body would be drawn through
-                // the old one's mask. The pose rides in `path` and is not part of the key, because it
-                // moves every frame and a mask per frame is two chamfer passes per frame.
+                // the same silhouette the `Canvas` route fills. The key is the body's own outline
+                // **and the part of the pose that moves it** (`OpenBotAvatarPose.silhouetteKey`):
+                // the drawer keeps one silhouette's texture, so a new body has to rebuild it (a
+                // preset, a paste, a save) and so does a body that has turned, hopped or squashed
+                // (a celebration's yaw and lift, a working sway) — otherwise the mask froze at
+                // whichever pose first drew while the eyes and ribbons turned over a body that did
+                // not. A blink, a gaze or a ribbon is not in the key: none of them changes the edge,
+                // and the key is bucketed so a 10 Hz frame does not rebuild tens of millions of
+                // multiply-adds.
                 BotAvatarGlassView(surface: glass,
                                    path: model.silhouette.applying(face),
-                                   maskKey: model.bodyKey)
+                                   maskKey: model.bodyKey + "|" + pose.silhouetteKey)
                 Canvas { context, canvasSize in
                     OpenBotAvatarRenderer.draw(model, pose: pose, material: material,
                                                backdrop: surface, into: &context, size: canvasSize,
@@ -236,6 +264,29 @@ public struct OpenBotAvatarView: View {
         let luminance = 0.299 * red + 0.587 * green + 0.114 * blue
         return luminance < 0.18 ? Color(white: 0.92) : OpenBotAvatarRenderer.defaultInk
     }
+}
+
+// MARK: - Who says whether the face is on screen
+
+/// What answers "may this face move now", beyond `animates` and Reduce Motion.
+///
+/// A drawn avatar is a pure function of time, so something has to tell it when time should stand
+/// still: a window that is behind another, an app in the background, a panel on another Space. SwiftUI
+/// answers that for anything inside a scene (`scenePhase`), and the desktop pet is the case that is
+/// not: its face is a bare `NSHostingView`'s root view inside an `NSPanel`, so the environment holds
+/// only `ScenePhase`'s default. Reading that as the truth stopped the pet's face at the rest pose
+/// while the pet's own hop, blink and gaze loops kept running over it — the face disagreeing with the
+/// body around it, and permanently.
+///
+/// So the answer is asked of whoever owns the window, and a host that knows says so:
+public enum OpenBotAvatarMotionGate: Hashable, Sendable {
+    /// SwiftUI's `scenePhase`, read from the environment. The default, and right for every surface
+    /// inside a window scene.
+    case scenePhase
+    /// The caller: `animates` is the whole visibility answer, because the host watches its own window
+    /// (the pet passes its panel's occlusion through `animates: pet.isVisible`). `scenePhase` is not
+    /// consulted, because for a panel-hosted view it answers `.background` for ever.
+    case host
 }
 
 // MARK: - The app's vocabulary, mapped

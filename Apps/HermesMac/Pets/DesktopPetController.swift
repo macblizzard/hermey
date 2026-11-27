@@ -607,6 +607,14 @@ final class DesktopPetController: ObservableObject {
 
     private func refreshPassThrough() {
         guard !pets.isEmpty, dragging.isEmpty else { return }
+        // Nothing on screen means nothing to hit-test. A hidden app (`⌘H`), every panel occluded
+        // (another Space, Mission Control, a full-screen app) or a sleeping display answers the same
+        // pass-through it already has, so the 10 Hz tick costs nothing until a pet is back — the same
+        // visibility signal the pets' own hop, blink and gaze loops stop on (`PetModel.isVisible`),
+        // read here from the panels themselves because the tick may run before any observer fired.
+        guard !NSApp.isHidden,
+              pets.values.contains(where: { $0.panel.occlusionState.contains(.visible) })
+        else { return }
         let mouse = NSEvent.mouseLocation
         for pet in pets.values {
             guard pet.panel.isVisible else { continue }
