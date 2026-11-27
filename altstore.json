@@ -22,14 +22,14 @@
       "screenshots": [],
       "versions": [
         {
-          "version": "0.1.692",
-          "buildVersion": "692",
-          "date": "2026-11-27T11:15:39Z",
-          "localizedDescription": "One voice control in the composer: tap talks hands-free, hold dictates. Settings > Shortcuts gains Option-Cmd-V (conversation) and Option-Cmd-D (dictate). The iPhone loop now ends a sentence instead of waiting forever, and the update prompt offers the newest build instead of the next one. hermeyd 0.8.25.",
-          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.692/Hermey-0.1.692-b692.ipa",
-          "size": 6325552,
+          "version": "0.1.693",
+          "buildVersion": "693",
+          "date": "2026-11-27T11:45:06Z",
+          "localizedDescription": "Voice loop: it now ends a sentence against the voice it actually heard, so pausing sends your turn; tapping stop mid-sentence keeps what you said; and saying stop is heard on every path. Plus the update feed now comes from the release asset, with no 10-minute cache.",
+          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.693/Hermey-0.1.693-b693.ipa",
+          "size": 6328490,
           "minOSVersion": "17.0",
-          "sha256": "86dd12904d46f9cfc4f116bde43ffb3c33a4940bbfdbcbb3571b0cb241fe3fec"
+          "sha256": "0ef0d4172e6e8a37eaf7f83759b251ce5b40f583bbd576c64c8f80bd9f85f9aa"
         }
       ],
       "appPermissions": {
@@ -43,10 +43,10 @@
   ],
   "news": [
     {
-      "title": "Hermes 0.1.692 (692)",
-      "identifier": "hermes-0.1.692-692",
-      "caption": "One voice control in the composer: tap talks hands-free, hold dictates. Settings > Shortcuts gains Option-Cmd-V (conversation) and Option-Cmd-D (dictate). The iPhone loop now ends a sentence instead of waiting forever, and the update prompt offers the newest build instead of the next one. hermeyd 0.8.25.",
-      "date": "2026-11-27T11:15:39Z",
+      "title": "Hermes 0.1.693 (693)",
+      "identifier": "hermes-0.1.693-693",
+      "caption": "Voice loop: it now ends a sentence against the voice it actually heard, so pausing sends your turn; tapping stop mid-sentence keeps what you said; and saying stop is heard on every path. Plus the update feed now comes from the release asset, with no 10-minute cache.",
+      "date": "2026-11-27T11:45:06Z",
       "tintColor": "#9A9AA0"
     }
   ],
