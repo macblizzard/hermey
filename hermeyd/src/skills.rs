@@ -316,16 +316,16 @@ fn mapped_platform(declared: &str) -> String {
 }
 
 /// The skill's frontmatter as a mapping (empty when it has none, or is not valid YAML).
-fn frontmatter(text: &str) -> serde_yaml::Value {
+fn frontmatter(text: &str) -> serde_yaml_ng::Value {
     let text = text.strip_prefix('\u{feff}').unwrap_or(text);
     let Some(rest) = text.strip_prefix("---") else {
-        return serde_yaml::Value::Null;
+        return serde_yaml_ng::Value::Null;
     };
     let rest = rest.trim_start_matches(['\r', '\n']);
     let Some(end) = rest.find("\n---") else {
-        return serde_yaml::Value::Null;
+        return serde_yaml_ng::Value::Null;
     };
-    serde_yaml::from_str(&rest[..end]).unwrap_or(serde_yaml::Value::Null)
+    serde_yaml_ng::from_str(&rest[..end]).unwrap_or(serde_yaml_ng::Value::Null)
 }
 
 /// Whether this host may receive the skill.
@@ -337,21 +337,21 @@ fn frontmatter(text: &str) -> serde_yaml::Value {
 pub fn applies_on(template: &str, host_os: &str) -> bool {
     let front = frontmatter(template);
     let declared = match front.get("platforms") {
-        None | Some(serde_yaml::Value::Null) => return true,
-        Some(serde_yaml::Value::Sequence(items)) if items.is_empty() => return true,
+        None | Some(serde_yaml_ng::Value::Null) => return true,
+        Some(serde_yaml_ng::Value::Sequence(items)) if items.is_empty() => return true,
         Some(value) => value.clone(),
     };
     let current = sys_platform(host_os);
     let mut wanted: Vec<String> = Vec::new();
     match declared {
-        serde_yaml::Value::Sequence(items) => {
+        serde_yaml_ng::Value::Sequence(items) => {
             for item in items {
                 if let Some(text) = item.as_str() {
                     wanted.push(text.to_string());
                 }
             }
         }
-        serde_yaml::Value::String(text) => wanted.push(text),
+        serde_yaml_ng::Value::String(text) => wanted.push(text),
         _ => return true,
     }
     wanted
@@ -365,8 +365,8 @@ pub fn applies_on(template: &str, host_os: &str) -> bool {
 /// writes a bare decimal does not report an empty version.
 pub fn version(template: &str) -> String {
     match frontmatter(template).get("version") {
-        Some(serde_yaml::Value::String(text)) => text.clone(),
-        Some(serde_yaml::Value::Number(number)) => number.to_string(),
+        Some(serde_yaml_ng::Value::String(text)) => text.clone(),
+        Some(serde_yaml_ng::Value::Number(number)) => number.to_string(),
         _ => String::new(),
     }
 }
@@ -624,7 +624,7 @@ fn external_dirs(config: &Path) -> Vec<PathBuf> {
     let Some(text) = read_text(config) else {
         return Vec::new();
     };
-    let parsed: serde_yaml::Value = match serde_yaml::from_str(&text) {
+    let parsed: serde_yaml_ng::Value = match serde_yaml_ng::from_str(&text) {
         Ok(value) => value,
         Err(_) => return Vec::new(),
     };
@@ -636,14 +636,14 @@ fn external_dirs(config: &Path) -> Vec<PathBuf> {
     };
     let mut out = Vec::new();
     match list {
-        serde_yaml::Value::Sequence(items) => {
+        serde_yaml_ng::Value::Sequence(items) => {
             for item in items {
                 if let Some(text) = item.as_str() {
                     out.push(expand_home(text));
                 }
             }
         }
-        serde_yaml::Value::String(one) => out.push(expand_home(one)),
+        serde_yaml_ng::Value::String(one) => out.push(expand_home(one)),
         _ => {}
     }
     out

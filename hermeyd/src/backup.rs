@@ -48,7 +48,7 @@ fn read_text(dir: &Path, name: &str) -> String {
 /// `name:` / `description:` out of a profile's config.yaml without pulling in a YAML writer.
 fn config_fields(dir: &Path) -> (Option<String>, Option<String>) {
     let text = read_text(dir, "config.yaml");
-    let doc: serde_yaml::Value = serde_yaml::from_str(&text).unwrap_or(serde_yaml::Value::Null);
+    let doc: serde_yaml_ng::Value = serde_yaml_ng::from_str(&text).unwrap_or(serde_yaml_ng::Value::Null);
     let get = |key: &str| {
         doc.get(key)
             .and_then(|v| v.as_str())
@@ -236,7 +236,7 @@ pub async fn restore(
                     cfg.insert("description".into(), json!(description));
                 }
             }
-            let rendered = serde_yaml::to_string(&Value::Object(cfg)).unwrap_or_default();
+            let rendered = serde_yaml_ng::to_string(&Value::Object(cfg)).unwrap_or_default();
             let _ = std::fs::write(dir.join("config.yaml"), rendered);
             write_if_missing(&dir, "SOUL.md", bot.get("soul").and_then(|s| s.as_str()).unwrap_or(""), true);
             created.push(json!({"profile": profile, "by": "backup"}));
@@ -588,7 +588,7 @@ pub(crate) async fn import_backup(
             if !description.is_empty() {
                 cfg.insert("description".into(), json!(description));
             }
-            let rendered = serde_yaml::to_string(&Value::Object(cfg)).unwrap_or_default();
+            let rendered = serde_yaml_ng::to_string(&Value::Object(cfg)).unwrap_or_default();
             atomic_write(&directory, "config.yaml", &rendered);
             let soul = entry.get("soul").and_then(|s| s.as_str()).unwrap_or("");
             if !soul.is_empty() {

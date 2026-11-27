@@ -33,15 +33,15 @@ fn config_path(st: &AppState, profile: &str) -> PathBuf {
     st.engine_home.join("profiles").join(profile).join("config.yaml")
 }
 
-fn load(path: &PathBuf) -> serde_yaml::Value {
+fn load(path: &PathBuf) -> serde_yaml_ng::Value {
     std::fs::read_to_string(path)
         .ok()
-        .and_then(|s| serde_yaml::from_str::<serde_yaml::Value>(&s).ok())
+        .and_then(|s| serde_yaml_ng::from_str::<serde_yaml_ng::Value>(&s).ok())
         .filter(|v| v.is_mapping())
-        .unwrap_or(serde_yaml::Value::Mapping(Default::default()))
+        .unwrap_or(serde_yaml_ng::Value::Mapping(Default::default()))
 }
 
-fn get_str(doc: &serde_yaml::Value, section: &str, key: &str) -> String {
+fn get_str(doc: &serde_yaml_ng::Value, section: &str, key: &str) -> String {
     doc.get(section)
         .and_then(|s| s.get(key))
         .and_then(|v| v.as_str())
@@ -52,7 +52,7 @@ fn get_str(doc: &serde_yaml::Value, section: &str, key: &str) -> String {
 /// `auxiliary.vision.<key>` — the shape every shipped config uses and the engine reads
 /// (`agent/image_routing.py` → `cfg["auxiliary"]["vision"]["provider"|"model"]`,
 /// `agent/auxiliary_client.py` → `_get_auxiliary_task_config("vision")`).
-fn nested_char(doc: &serde_yaml::Value, section: &str, block: &str, key: &str) -> String {
+fn nested_char(doc: &serde_yaml_ng::Value, section: &str, block: &str, key: &str) -> String {
     doc.get(section)
         .and_then(|s| s.get(block))
         .and_then(|b| b.get(key))
@@ -66,7 +66,7 @@ fn nested_char(doc: &serde_yaml::Value, section: &str, block: &str, key: &str) -
 ///
 /// This is the live bug this module had: it only read the flat pair, which neither shipped config
 /// nor the engine writes, so the app's vision row showed `auto` on every bot forever.
-fn vision_pair(doc: &serde_yaml::Value) -> (String, String) {
+fn vision_pair(doc: &serde_yaml_ng::Value) -> (String, String) {
     let mut provider = nested_char(doc, "auxiliary", "vision", "provider");
     let mut model = nested_char(doc, "auxiliary", "vision", "model");
     if provider.is_empty() {
@@ -78,7 +78,7 @@ fn vision_pair(doc: &serde_yaml::Value) -> (String, String) {
     (provider, model)
 }
 
-fn view(doc: &serde_yaml::Value) -> Value {
+fn view(doc: &serde_yaml_ng::Value) -> Value {
     let effort = get_str(doc, "agent", "reasoning_effort");
     let (raw_provider, vision_model) = vision_pair(doc);
     let provider = if raw_provider.is_empty() {
@@ -120,7 +120,7 @@ pub async fn get_settings(
 /// `auxiliary.free_only` — settings this sheet does not own but that the engine does read. So the
 /// existing maps are cloned, one key is written, and the rest is put back untouched.
 fn apply_vision(
-    doc: &mut serde_yaml::Value,
+    doc: &mut serde_yaml_ng::Value,
     provider: Option<&str>,
     model: Option<&str>,
 ) {
@@ -129,44 +129,44 @@ fn apply_vision(
         .and_then(|v| v.as_mapping().cloned())
         .unwrap_or_default();
     let mut vision = auxiliary
-        .get(serde_yaml::Value::from("vision"))
+        .get(serde_yaml_ng::Value::from("vision"))
         .and_then(|v| v.as_mapping().cloned())
         .unwrap_or_default();
     if let Some(provider) = provider {
         vision.insert(
-            serde_yaml::Value::from("provider"),
-            serde_yaml::Value::from(provider.trim()),
+            serde_yaml_ng::Value::from("provider"),
+            serde_yaml_ng::Value::from(provider.trim()),
         );
     }
     if let Some(model) = model {
         vision.insert(
-            serde_yaml::Value::from("model"),
-            serde_yaml::Value::from(model.trim()),
+            serde_yaml_ng::Value::from("model"),
+            serde_yaml_ng::Value::from(model.trim()),
         );
     }
     auxiliary.insert(
-        serde_yaml::Value::from("vision"),
-        serde_yaml::Value::Mapping(vision),
+        serde_yaml_ng::Value::from("vision"),
+        serde_yaml_ng::Value::Mapping(vision),
     );
-    doc["auxiliary"] = serde_yaml::Value::Mapping(auxiliary);
+    doc["auxiliary"] = serde_yaml_ng::Value::Mapping(auxiliary);
 }
 
 /// Set `agent.reasoning_effort`, preserving the rest of the `agent` block.
-fn apply_effort(doc: &mut serde_yaml::Value, effort: &str) {
+fn apply_effort(doc: &mut serde_yaml_ng::Value, effort: &str) {
     let mut agent = doc
         .get("agent")
         .and_then(|v| v.as_mapping().cloned())
         .unwrap_or_default();
     agent.insert(
-        serde_yaml::Value::from("reasoning_effort"),
-        serde_yaml::Value::from(effort),
+        serde_yaml_ng::Value::from("reasoning_effort"),
+        serde_yaml_ng::Value::from(effort),
     );
-    doc["agent"] = serde_yaml::Value::Mapping(agent);
+    doc["agent"] = serde_yaml_ng::Value::Mapping(agent);
 }
 
 /// Render and replace the config atomically: a half-written config would break the bot's next turn.
-fn save(path: &std::path::Path, doc: &serde_yaml::Value) -> Result<(), String> {
-    let rendered = serde_yaml::to_string(doc)
+fn save(path: &std::path::Path, doc: &serde_yaml_ng::Value) -> Result<(), String> {
+    let rendered = serde_yaml_ng::to_string(doc)
         .map_err(|e| format!("could not render config: {e}"))?;
     let tmp = path.with_extension("yaml.tmp");
     std::fs::write(&tmp, rendered).map_err(|e| format!("could not write config: {e}"))?;
@@ -229,8 +229,8 @@ mod tests {
     use std::path::PathBuf;
     use std::time::{SystemTime, UNIX_EPOCH};
 
-    fn parse(text: &str) -> serde_yaml::Value {
-        serde_yaml::from_str(text).expect("yaml")
+    fn parse(text: &str) -> serde_yaml_ng::Value {
+        serde_yaml_ng::from_str(text).expect("yaml")
     }
 
     fn scratch(tag: &str) -> PathBuf {
@@ -295,7 +295,7 @@ mod tests {
         apply_vision(&mut doc, Some(" opencode-go "), Some("deepseek-v4.1-flash"));
 
         // Render and re-parse: a round trip through the file is what the engine reads.
-        let again = parse(&serde_yaml::to_string(&doc).unwrap());
+        let again = parse(&serde_yaml_ng::to_string(&doc).unwrap());
         assert_eq!(again["auxiliary"]["vision"]["provider"], "opencode-go");
         assert_eq!(again["auxiliary"]["vision"]["model"], "deepseek-v4.1-flash");
         assert_eq!(
@@ -316,7 +316,7 @@ mod tests {
     fn writing_only_the_model_keeps_the_provider() {
         let mut doc = parse("auxiliary:\n  vision:\n    provider: opencode-go\n    model: old\n");
         apply_vision(&mut doc, None, Some("new-model"));
-        let again = parse(&serde_yaml::to_string(&doc).unwrap());
+        let again = parse(&serde_yaml_ng::to_string(&doc).unwrap());
         assert_eq!(again["auxiliary"]["vision"]["provider"], "opencode-go");
         assert_eq!(again["auxiliary"]["vision"]["model"], "new-model");
     }
@@ -326,7 +326,7 @@ mod tests {
     fn an_effort_write_keeps_the_agent_block() {
         let mut doc = parse("agent:\n  reasoning_effort: low\n  max_turns: 12\n");
         apply_effort(&mut doc, "high");
-        let again = parse(&serde_yaml::to_string(&doc).unwrap());
+        let again = parse(&serde_yaml_ng::to_string(&doc).unwrap());
         assert_eq!(again["agent"]["reasoning_effort"], "high");
         assert_eq!(again["agent"]["max_turns"], 12);
     }

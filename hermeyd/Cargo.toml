@@ -21,9 +21,9 @@ serde = { version = "1", features = ["derive"] }
 # cleared — "counts come back after mark all as read". Found 2026-11-21 on `1795222533.1375353`
 # (parsed as ...5350, one ULP = 2.4e-7 s at that magnitude).
 serde_json = { version = "1", features = ["float_roundtrip"] }
-serde_yaml = "0.9"
+serde_yaml_ng = "0.10"
 urlencoding = "2"
-rusqlite = { version = "0.32", features = ["bundled"] }
+rusqlite = { version = "0.43", features = ["bundled"] }
 rand = "0.8"
 base64 = "0.22"
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls", "multipart"] }

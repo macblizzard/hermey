@@ -139,10 +139,10 @@ fn limit_for(dir: &FsPath, target: &str) -> usize {
         "memory_char_limit"
     };
     let text = std::fs::read_to_string(dir.join("config.yaml")).unwrap_or_default();
-    let doc: serde_yaml::Value = serde_yaml::from_str(&text).unwrap_or(serde_yaml::Value::Null);
+    let doc: serde_yaml_ng::Value = serde_yaml_ng::from_str(&text).unwrap_or(serde_yaml_ng::Value::Null);
     doc.get("memory")
         .and_then(|memory| memory.get(key))
-        .and_then(serde_yaml::Value::as_u64)
+        .and_then(serde_yaml_ng::Value::as_u64)
         .filter(|limit| *limit > 0)
         .unwrap_or(fallback) as usize
 }

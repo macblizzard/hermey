@@ -579,8 +579,8 @@ fn is_fast_model(model: &str) -> bool {
 fn pet_model(st: &AppState, profile: &str) -> Option<(String, String)> {
     let path = st.engine_home.join("profiles").join(profile).join("config.yaml");
     let text = std::fs::read_to_string(path).ok()?;
-    let doc: serde_yaml::Value = serde_yaml::from_str(&text).ok()?;
-    let provider_of = |entry: &serde_yaml::Value| {
+    let doc: serde_yaml_ng::Value = serde_yaml_ng::from_str(&text).ok()?;
+    let provider_of = |entry: &serde_yaml_ng::Value| {
         entry
             .get("provider")
             .and_then(|v| v.as_str())
