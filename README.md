@@ -92,6 +92,10 @@ python3 Tools/site/build_docs.py <the docs/ directory of the gh-pages branch>
 
 ## Screenshots
 
+> **The shots show an earlier build.** The bot faces here are the flat pre-glass look; since 0.1.685 a
+> glass face lets the page behind it show through and adds its own colour on top — see
+> [`docs/APPS.md`](docs/APPS.md). Regenerating them needs a built app on a Mac, so they are left as shot.
+
 <p align="center">
   <img src="docs/media/shots/bots-list.webp" alt="The bot list on iPhone, with one bot pinned" width="196">
   <img src="docs/media/shots/chat-table.webp" alt="A reply rendered as a markdown table" width="196">
@@ -116,7 +120,8 @@ python3 Tools/site/build_docs.py <the docs/ directory of the gh-pages branch>
 | | |
 |---|---|
 | **Desktop pets** | A bot's own picture, on your Mac's desktop, with no window or frame around it — it bobs, blinks and wanders, drags anywhere and remembers the screen, answers a question in a frosted balloon, and hops with a badge when a reply lands while Hermey is minimised. It is the reason to keep the Mac app on the desktop rather than in the Dock: the bot is simply there. |
-| **A bot's own face** | Any bot can wear a generated face instead of a picture: an **Avatar** tab in its settings with twelve presets (and a **Random** button that picks a shape, a material and a colour in one press), a box for an [open-bot-avatar](https://github.com/DominikScholz/open-bot-avatar) definition (MIT, by Dominik Scholz), colour and eye placement you nudge against a live preview, and a body that is flat, glass, matte or metal. It draws in the bot list, the chat header and as the desktop pet — and the pet says what the bot is doing in one word underneath it. |
+|| **A bot's own face** | Any bot can wear a generated face instead of a picture: an **Avatar** tab in its settings with twelve presets (and a **Random** button that picks a shape, a material and a colour in one press), a box for an [open-bot-avatar](https://github.com/DominikScholz/open-bot-avatar) definition (MIT, by Dominik Scholz), colour and eye placement you nudge against a live preview, and a body that is flat, glass, matte or metal. It draws in the bot list, the chat header and as the desktop pet — and the pet says what the bot is doing in one word underneath it. |
+|| **Rebindable keyboard shortcuts** | Settings ▸ **Shortcuts** on the Mac is one list of every key the app answers to — Navigation, Conversation, Message, Window — each row re-recordable (Escape cancels, ⌫ clears it), with a per-row reset and Restore Defaults. A combination another action owns is refused and named; macOS's own ⌘Q, ⌘W and ⌘, cannot be taken; a rebind applies live, no relaunch. Mac-only — a phone has no hardware keyboard to bind. |
 | **Bots first** | The home screen is your bots. Each opens one endless conversation — no session list to manage. |
 | **Group chats** | Several bots in one room, with tables, code and quotes rendered, per-message read-aloud, copy, reply and reactions. A room is renamed from its row, on either device. |
 | **Reactions that follow you** | One emoji per message, kept by the host — react on the Mac and the phone shows it. Unpaired, both apps still work locally. |

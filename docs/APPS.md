@@ -146,13 +146,19 @@ draft, drawn in the state the bot is actually in.
   it had.
 - **Nudge it by hand:** the colour, and the eyes' position, spacing and scale. Those edit the same
   definition the preview draws, so what you see is what gets saved.
-- **Four materials.** **Solid** is the flat body it has always been. **Glass** is lit: a three-stop
-  ramp, one specular streak, a rim that catches the light and a soft glow. **Matte** takes the shine
-  away — felt or unglazed clay, dark soft edges and a faint grain. **Metal** puts one hard horizon line
+- **Four materials.** **Solid** is the flat body it has always been. **Glass** is lit: the page behind
+  it shows through, the body adds its own colour on top, and a soft glow rides the rim. **Matte** takes
+  the shine away — felt or unglazed clay, dark soft edges and a faint grain. **Metal** puts one hard horizon line
   across the body with a narrow bright rim and no halo. What gets drawn follows the size: a row in the
   bot list carries the ramp, the rim and the contact band, the pet adds the streak and a glow kept
   inside its window, the editor's preview adds the eye's catchlight. The eight states tint the rim, and
   **Blocked** calms the colour instead of turning it red.
+  Glass is a window rather than a painting now: the surface the avatar sits on shows through the body,
+  and the body answers with its own colour — none over a light page, the material's full colour over a
+  dark one — so a face never collapses into the pane behind it. The glow is measured from the body's own
+  outline rather than from its pixels, so it fades in one smooth ramp instead of stepping into bands,
+  and over a dark surface the face is lit a little from inside to keep its depth. What it does not do
+  yet is bend the page behind it — that work is parked, and no shipped build refracts anything.
 - **It moves like the picture faces.** A drawn face uses the same idle motion and the same pose for
   the state it is in, so choosing one does not make a bot go still.
 - **One place to pick a face.** This tab is the only chooser: the old *Choose bot icon* control is
@@ -195,6 +201,26 @@ something else — and the old three words (Working, Needs you, Finished) are go
 A row's **⋯** menu appears on hover, on selection and from the keyboard, and reserves no space when it
 is hidden — a long bot name gets the width instead. Hovering a row also wakes its avatar for a small
 hop, so a list of bots reads as alive before you open any of them.
+
+## Keyboard shortcuts
+
+Settings → **Shortcuts** (Mac) is one list of every keyboard action in the app, under four headings —
+**Navigation**, **Conversation**, **Message** and **Window** — and the menu bar, the ⌘K palette's hints
+and this pane all read the same table, so they cannot disagree about what a key does. Any row can be
+re-recorded: press its field, then the combination you want (Escape cancels, ⌫ clears the row), and the
+row's ↺ puts the shipped key back; **Restore Defaults** does that for every row at once. A combination
+another action already owns is refused with the name of the action that has it, and macOS's own ⌘Q,
+⌘W and ⌘, cannot be taken at all. A change applies immediately — the menus follow without a relaunch.
+Three verb families arrived with the pane and had only buttons before: **Copy / Edit / Delete Last
+Message** (⇧⌘C, ⌥⌘E, ⌘⌫), **Next / Previous Bot** (⌥⌘↓, ⌥⌘↑) and **Refresh Conversation** (⌘R).
+The pane is Mac-only: a phone has no hardware keyboard to bind, so it has no such screen.
+
+## Acting on a message
+
+The per-message **⋯** is gone. On the Mac, right-click (or ctrl-click) anywhere on the row, or use the
+menu bar's **Message Actions…** (**⌘⇧M**), which opens the same menu for the row the keyboard is on;
+on the phone, long-press the message. A message row is a tab stop in between: the keyboard reaches it,
+and the focused row shows a quiet hairline instead of a focus ring.
 
 ## Reactions — one emoji, both devices
 
