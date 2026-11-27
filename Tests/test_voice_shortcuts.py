@@ -1,4 +1,4 @@
-"""Two keyboard rows for the composer's one audio control: ⌥⌘V talks, ⌃⌘D dictates.
+"""Two keyboard rows for the composer's one audio control: ⌥⌘V talks, ⌥⌘D dictates.
 
 The owner asked: *"do we have keyboard shortcut set for the voice conversation mode? if not then
 please add that option on shortcut settings, i need that to be able to just hit the keys and talk
@@ -89,8 +89,8 @@ class TheRows(unittest.TestCase):
         rows = rows_by_id()
         self.assertEqual(rows[CONVERSATION]["combo"], ("v", frozenset({"option", "command"})),
                          "Voice Conversation must ship on ⌥⌘V")
-        self.assertEqual(rows[DICTATE]["combo"], ("d", frozenset({"control", "command"})),
-                         "Dictate a Message must ship on ⌃⌘D")
+        self.assertEqual(rows[DICTATE]["combo"], ("d", frozenset({"option", "command"})),
+                         "Dictate a Message must ship on ⌥⌘D — ⌃⌘D is macOS's Look Up in Dictionary")
 
     def test_the_groups_are_conversation_and_message(self) -> None:
         rows = rows_by_id()

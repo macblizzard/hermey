@@ -400,7 +400,7 @@ public enum ShortcutRegistry {
             title: "Dictate a Message",
             detail: "Record one message and put the words in the draft — nothing is sent. Press it again to stop and transcribe.",
             group: .message,
-            defaultCombo: ShortcutCombo("d", .control, .command),
+            defaultCombo: ShortcutCombo("d", .option, .command),
             menuItemTitles: ["Dictate a Message"],
             note: "Mac only: the phone has no keyboard and holds the composer's audio control instead."),
         ShortcutAction(
