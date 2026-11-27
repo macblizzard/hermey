@@ -89,7 +89,7 @@ class BargeIn(unittest.TestCase):
         # The engine is mid-collection when the trip fires; moving its phase would throw the
         # utterance away. The handler sets the published state only.
         body = self.body()
-        self.assertIn("state = .listening", body)
+        self.assertIn("transition(to: .listening)", body)
         self.assertNotIn("capture.setPhase", body)
 
     def test_the_capture_keeps_rolling_from_the_pre_roll(self) -> None:
@@ -143,7 +143,7 @@ class Teardown(unittest.TestCase):
         self.assertLess(body.index("capture.stop()"), body.index("player.stopPlayback()"))
         self.assertIn("pipelineTask?.cancel()", body)
         self.assertIn("watchdog?.cancel()", body)
-        self.assertIn("state = .off", body)
+        self.assertIn("transition(to: .off)", body)
 
     def test_backgrounding_goes_through_it(self) -> None:
         body = swift_body(CONTROLLER, "public func noteBackgrounded()")
@@ -290,6 +290,113 @@ class ThePlatforms(unittest.TestCase):
         self.assertIn("AVAudioSession.interruptionNotification", AUDIO)
         # The Mac has no session: the permission path is the other half of the platform split.
         self.assertIn("AVCaptureDevice.authorizationStatus(for: .audio)", AUDIO)
+
+
+class TheStartIsVisible(unittest.TestCase):
+    """A loop that never begins must say so, step by step.
+
+    The report was a hands-free conversation that "does nothing" on the phone with an empty log:
+    no phase change, no error, nothing. That is the failure these guards make impossible — every
+    step of the start path writes a named line, and a failure writes the reason before it stops.
+    """
+
+    def test_every_step_of_a_start_writes_a_line(self) -> None:
+        # The microphone's own path: permission, session, format, tap, engine — then proof the
+        # stream is alive, then the first thing the VAD heard.
+        for step in ("permission: ", "session: ", "format: input ", "tap: installed",
+                     "engine: running", "start failed: "):
+            self.assertIn(f'VoiceLog.note("{step}', AUDIO, step)
+        for step in ("first buffer: ", "vad: speech started", "endpoint: ", "vad: speech over"):
+            self.assertIn(f'logFromAudioThread("{step}', AUDIO, step)
+        # The frame count is the point of that line: it is what proves the tap is delivering audio
+        # rather than reporting its own conversion failure.
+        self.assertIn('logFromAudioThread("first buffer: \\(buffer.frameLength) frames', AUDIO)
+        # And the loop's own: the tap arriving, phase changes, the turn and its transcript.
+        for step in ("start: entered", "start: listening", "start: refused", "start: abandoned",
+                     "phase: ", "failed: ", "transcribe: ", "turn: sent", "stop: "):
+            self.assertIn(f'VoiceLog.note("{step}', CONTROLLER, step)
+
+    def test_the_controller_logs_and_surfaces_a_thrown_failure(self) -> None:
+        # A start that throws must log the case *and* reach the state the composer draws.
+        body = swift_body(CONTROLLER, "public func start()")
+        self.assertIn("self.fail(Self.message(for: error))", body)
+        self.assertIn("self.transition(to: .listening)", body)
+        fail = swift_body(CONTROLLER, "private func fail(")
+        self.assertIn('VoiceLog.note("failed: ', fail)
+        self.assertIn("errorMessage = message", fail)
+        self.assertIn("transition(to: .failed)", fail)
+        # The name, not just the sentence: "which step stopped it" is answered from a pasted log.
+        self.assertIn("case .sessionFailed: return \"sessionFailed\"", AUDIO)
+        self.assertIn("StartFailure.\\(failure.name)", CONTROLLER)
+
+    def test_no_throw_in_the_start_path_bypasses_the_log(self) -> None:
+        # Every failure goes through `failed(_:)`, which is what logs its name; `activate()` wraps
+        # a session refusal into `sessionFailed` and logs it itself. One bare `throw` would be a
+        # silent stop again, so the two named forms are the only ones allowed.
+        for line in AUDIO.splitlines():
+            text = line.strip()
+            if text.startswith("throw "):
+                self.assertTrue(text.startswith("throw failed(")
+                                or text.startswith("throw VoiceCaptureEngine.StartFailure.sessionFailed("),
+                                f"unlogged throw: {text}")
+        self.assertNotIn("throw StartFailure", AUDIO)
+
+    def test_a_refused_start_says_why_instead_of_nothing(self) -> None:
+        body = swift_body(CONTROLLER, "public func start()")
+        # No host / no conversation: a sentence, not a `return`.
+        self.assertIn('VoiceLog.note("start: refused', body)
+        self.assertIn("VoiceLoopFailure.noHost", body)
+        # A tap the shells cannot honour speaks too.
+        self.assertIn("public func reportUnavailable", CONTROLLER)
+        self.assertIn("voiceLoop.reportUnavailable(", PHONE)
+
+    def test_the_status_bar_shows_the_failure_sentence(self) -> None:
+        # "Voice stopped" with no detail is the same silence in the composer that the log had.
+        detail = swift_body(BAR, "private var detail")
+        self.assertIn("loop.errorMessage", detail)
+        self.assertIn("loop.state == .failed", detail)
+
+
+class TheTwoControls(unittest.TestCase):
+    """One records a message; the other opens a conversation. They must not look the same."""
+
+    def test_the_loop_never_draws_a_bare_microphone(self) -> None:
+        glyphs = swift_body(STATE, "public var glyph")
+        cases = [line.strip() for line in glyphs.splitlines() if line.strip().startswith("case .")]
+        self.assertEqual(len(cases), 6)
+        for line in cases:
+            self.assertNotIn('"mic', line, f"the loop is drawing the dictation glyph: {line}")
+        self.assertIn('case .listening: return "waveform.circle.fill"', glyphs)
+        self.assertIn('case .off: return "waveform"', glyphs)
+
+    def test_the_two_controls_carry_different_labels(self) -> None:
+        self.assertIn("voiceModeAccessibilityLabel", COMPOSER)
+        self.assertIn("micAccessibilityLabel", COMPOSER)
+        self.assertIn('accessibilityIdentifier("composer.voicemode")', COMPOSER)
+        self.assertIn('accessibilityIdentifier("composer.mic")', COMPOSER)
+        # The phone's own two labels, spelled out.
+        self.assertIn('"Start a hands-free voice conversation"', PHONE)
+        self.assertIn('"Record a voice message"', PHONE)
+
+    def test_the_waveform_is_the_loop_and_the_mic_is_dictation(self) -> None:
+        body = swift_body(PHONE, "private var micGlyph")
+        self.assertIn('"mic"', body)
+        self.assertIn('"stop.circle.fill"', body)
+        # The loop's control is fed the loop's glyph, never the dictation one.
+        self.assertIn("voiceModeSystemImage: voiceLoop.state.glyph", PHONE)
+
+
+class OneControllerPerScreen(unittest.TestCase):
+    def test_the_phone_owns_exactly_one_loop(self) -> None:
+        self.assertEqual(PHONE.count("VoiceLoopController("), 1)
+        # And it is the same object the status strip observes and the composer toggles.
+        self.assertIn("VoiceLoopStatusBar(loop: voiceLoop)", PHONE)
+        self.assertIn("onVoiceMode: { toggleVoiceMode() }", PHONE)
+
+    def test_both_shells_send_the_lines_to_the_client_log(self) -> None:
+        for shell in (PHONE, MAC_BAR):
+            self.assertIn("VoiceLog.shared.setSink", shell)
+            self.assertIn('category: "voice"', shell)
 
 
 if __name__ == "__main__":

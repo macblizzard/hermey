@@ -1566,6 +1566,13 @@ struct ConversationScreen: View {
     /// The conversation's moves, all through the screen's own transport and model: no second
     /// network stack, no second credential, nothing the composer's buttons do not already do.
     private func wireVoiceLoop() {
+        // Where the loop's own account of a start goes. Installed here rather than at launch
+        // because this screen is the only owner of a loop; `voice` is the category to filter by
+        // when a hands-free conversation "does nothing" and the reason has to be read out of a
+        // log rather than guessed from a screenshot.
+        VoiceLog.shared.setSink { message in
+            ClientLog.note(message, level: .info, category: "voice")
+        }
         let transport = app.makeVoiceTransport()
         voiceLoop.wiring = VoiceLoopWiring(
             transcribe: { audio, mimeType in
@@ -1589,12 +1596,21 @@ struct ConversationScreen: View {
     }
 
     /// One tap starts the conversation; the same tap (or a spoken "stop") ends it.
+    ///
+    /// The two audio controls in the composer are **different promises**: the microphone records
+    /// one message and puts the words in the field, this one opens a continuous conversation that
+    /// answers out loud and keeps listening. A tap that cannot start it says why — a control that
+    /// returns into silence is indistinguishable from a dead button, which is exactly the report
+    /// "hands-free voice does nothing on my phone" that produced this file's comments.
     private func toggleVoiceMode() {
         if voiceLoop.isActive {
             voiceLoop.stop()
             return
         }
-        guard sessionID != nil else { return }
+        guard sessionID != nil else {
+            voiceLoop.reportUnavailable("The conversation is still opening. Try hands-free voice again in a moment.")
+            return
+        }
         // Close dictation first: one microphone, one listener.
         if voice.state != .idle { voice.cancel() }
         voiceLoop.start()

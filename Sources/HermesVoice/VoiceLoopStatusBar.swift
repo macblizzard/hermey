@@ -78,9 +78,14 @@ public struct VoiceLoopStatusBar: View {
         .accessibilityLabel(accessibilityText)
     }
 
-    /// The second half of the line: what was heard, or how to stop, never both — one of them is
-    /// always the more useful thing.
+    /// The second half of the line: what was heard, why it stopped, or how to stop, never both —
+    /// one of them is always the more useful thing.
     private var detail: String? {
+        // A failure with no sentence is the silence this strip exists to end: the state word alone
+        // says the conversation stopped and nothing about why or what to do.
+        if loop.state == .failed, let message = loop.errorMessage, !message.isEmpty {
+            return message
+        }
         if let heard = loop.heardText, loop.state == .thinking || loop.state == .speaking {
             return "“\(heard)”"
         }

@@ -89,7 +89,12 @@ public final class VoiceLoopController: ObservableObject {
 
     // MARK: Published state
 
-    @Published public private(set) var state: VoiceLoopState = .off
+    /// The state, read through a computed property so that **every** move goes through
+    /// `transition(to:)`. A `@Published var` written from six places is how a loop ends up saying
+    /// "Listening" with nothing in the log to say how it got there — which is the report this
+    /// exists to answer.
+    @Published private var currentState: VoiceLoopState = .off
+    public var state: VoiceLoopState { currentState }
     /// The sentence to show when something failed. Cleared on the next start.
     @Published public private(set) var errorMessage: String?
     /// The most recent thing the host heard, so a mis-hearing is visible before the turn is spoken
@@ -102,7 +107,26 @@ public final class VoiceLoopController: ObservableObject {
     /// Dismiss the failure sentence. The conversation stays off; the toggle restarts it.
     public func clearError() {
         errorMessage = nil
-        if state == .failed { state = .off }
+        if state == .failed { transition(to: .off) }
+    }
+
+    /// Say why a tap did nothing, for the paths the shells reach *before* `start()` — no session
+    /// yet, a control tapped while the conversation is still opening. Those used to `return` into
+    /// silence, which is indistinguishable from a dead button.
+    public func reportUnavailable(_ message: String) {
+        guard !state.ownsMicrophone, state != .failed else { return }
+        VoiceLog.note("blocked: \(message)")
+        errorMessage = message
+        // `.failed` is the only state the composer draws while the microphone is shut, and a
+        // sentence nobody can see is the same as no sentence at all.
+        transition(to: .failed)
+    }
+
+    /// The one door into a new state, and the one log line that says the loop moved.
+    private func transition(to new: VoiceLoopState) {
+        guard currentState != new else { return }
+        VoiceLog.note("phase: \(currentState.rawValue) → \(new.rawValue)")
+        currentState = new
     }
 
     // MARK: Wiring
@@ -174,14 +198,23 @@ public final class VoiceLoopController: ObservableObject {
 
     /// Open the microphone and start listening. Safe to call when `.off` or `.failed`; ignored while
     /// a conversation is already running, so a double tap cannot open two streams.
+    ///
+    /// Every step of this path writes a line to the `voice` category. The phone's report was "it
+    /// does nothing" with an empty log, and that is the failure mode this method exists to make
+    /// impossible: either the loop starts and says so, or it stops and says which step stopped it.
     public func start() {
-        guard state == .off || state == .failed else { return }
+        guard state == .off || state == .failed else {
+            VoiceLog.note("start: ignored — already \(state.rawValue)")
+            return
+        }
         guard wiring.canRun() else {
             // Refuse before the microphone: a prompt the user grants and then a request that cannot
             // be made is worse than never starting.
+            VoiceLog.note("start: refused — no host or no open conversation")
             fail(VoiceLoopFailure.noHost.errorDescription ?? "")
             return
         }
+        VoiceLog.note("start: entered from \(state.rawValue)")
         errorMessage = nil
         notice = nil
         heardText = nil
@@ -190,7 +223,7 @@ public final class VoiceLoopController: ObservableObject {
         lastSpokenAt = nil
         let current = UUID()
         generation = current
-        state = .starting
+        transition(to: .starting)
         capture.setPhase(.starting)
         capture.isPlaybackActive = false
 
@@ -199,14 +232,20 @@ public final class VoiceLoopController: ObservableObject {
             do {
                 try await self.capture.start()
                 guard self.generation == current, self.state == .starting else {
-                    // Stopped while the permission prompt was up.
+                    // Stopped while the permission prompt was up. Worth a line: a start that is
+                    // abandoned here looks exactly like one that never ran.
+                    VoiceLog.note("start: abandoned — the loop was stopped before the microphone opened")
                     self.capture.stop()
                     return
                 }
+                VoiceLog.note("start: listening")
                 self.capture.setPhase(.listening)
-                self.state = .listening
+                self.transition(to: .listening)
             } catch {
-                guard self.generation == current else { return }
+                guard self.generation == current else {
+                    VoiceLog.note("start: \(Self.describe(error)) — after the loop was stopped")
+                    return
+                }
                 self.fail(Self.message(for: error))
             }
         }
@@ -216,6 +255,7 @@ public final class VoiceLoopController: ObservableObject {
     /// the spoken stop phrase — comes through here, because a path that forgets to stop the capture
     /// leaves the microphone open with nothing reading it.
     public func stop() {
+        if state != .off { VoiceLog.note("stop: requested from \(state.rawValue)") }
         generation = UUID()
         awaitingReply = false
         pipelineTask?.cancel()
@@ -231,7 +271,7 @@ public final class VoiceLoopController: ObservableObject {
         capture.stop()
         player.stopPlayback()
         capture.isPlaybackActive = false
-        state = .off
+        transition(to: .off)
     }
 
     /// Called by the shell when the app leaves the foreground — and, on the Mac, when the window
@@ -328,27 +368,39 @@ public final class VoiceLoopController: ObservableObject {
         }
         // The visible state follows him, but the capture keeps the phase it had: it is mid-collection
         // and switching phase would discard the audio it is holding.
-        state = .listening
+        transition(to: .listening)
     }
 
     /// One utterance → one turn.
     private func deliver(_ utterance: VoiceUtterance) {
-        guard state.ownsMicrophone else { return }
-        guard state != .starting else { return }
+        guard state.ownsMicrophone else {
+            VoiceLog.note("turn: dropped — the loop no longer owns the microphone")
+            return
+        }
+        guard state != .starting else {
+            VoiceLog.note("turn: dropped — the loop is still starting")
+            return
+        }
         interruptedTurn = false
         let current = generation
         setState(.thinking, engine: .thinking)
+        VoiceLog.note("transcribe: \(utterance.wav.count) bytes, \(String(format: "%.2f", utterance.duration)) s → host")
 
         Task { [weak self] in
             guard let self else { return }
             do {
                 let transcript = try await self.wiring.transcribe(utterance.wav, "audio/wav")
-                guard self.generation == current, self.state == .thinking else { return }
+                guard self.generation == current, self.state == .thinking else {
+                    VoiceLog.note("transcribe: answered after the loop moved on — dropped")
+                    return
+                }
                 let text = transcript.trimmingCharacters(in: .whitespacesAndNewlines)
+                VoiceLog.note("transcribe: answered with \(text.count) characters")
 
                 // A silent room must not become a turn: Whisper answers silence with a phrase of
                 // its own invention. Dropping it here is what keeps the loop from talking to itself.
                 if VoicePolicy.isHallucination(text) {
+                    VoiceLog.note("transcribe: dropped as silence — “\(text)”")
                     self.returnToListening()
                     return
                 }
@@ -357,6 +409,7 @@ public final class VoiceLoopController: ObservableObject {
                 if let at = self.lastSpokenAt,
                    Date().timeIntervalSince(at) < Self.echoGuardSeconds,
                    VoicePolicy.isSelfEcho(text, spoken: self.lastSpokenText) {
+                    VoiceLog.note("transcribe: dropped as our own reply coming back")
                     self.returnToListening()
                     return
                 }
@@ -368,6 +421,7 @@ public final class VoiceLoopController: ObservableObject {
 
                 self.heardText = text
                 self.awaitingReply = true
+                VoiceLog.note("turn: sent — “\(text)”")
                 self.wiring.sendTurn(text)
                 self.startReplyWatchdog()
             } catch {
@@ -427,7 +481,9 @@ public final class VoiceLoopController: ObservableObject {
     /// The two are separate because a barge-in changes what the *user* sees without changing what
     /// the capture is doing — it is still collecting the interruption it just detected.
     private func setState(_ new: VoiceLoopState, engine: VoiceLoopState? = nil) {
-        state = new
+        transition(to: new)
+        // Still moved when the visible state did not change: `capture.setPhase` is what re-arms the
+        // endpointing gate for the next utterance.
         if let engine { capture.setPhase(engine) }
     }
 
@@ -458,10 +514,14 @@ public final class VoiceLoopController: ObservableObject {
 
     /// The one failure path. It stops everything first: a failed request must never leave the
     /// microphone running, because the UI has already stopped promising an answer.
+    ///
+    /// The message is logged *before* the teardown, so the log reads in the order the failure
+    /// happened rather than after the stop it triggered.
     private func fail(_ message: String) {
+        VoiceLog.note("failed: \(message)")
         stop()
         errorMessage = message
-        state = .failed
+        transition(to: .failed)
     }
 
     private func restartIfActive() {
@@ -470,7 +530,19 @@ public final class VoiceLoopController: ObservableObject {
         start()
     }
 
+    /// The failure in the log's words: the named case for a microphone that would not open, the
+    /// sentence the user is shown for everything else.
+    private static func describe(_ error: Error) -> String {
+        if let failure = error as? VoiceCaptureEngine.StartFailure {
+            return "StartFailure.\(failure.name) — \(failure.errorDescription ?? "")"
+        }
+        return (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
+    }
+
     private static func message(for error: Error) -> String {
-        (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
+        if let failure = error as? VoiceCaptureEngine.StartFailure {
+            return failure.errorDescription ?? failure.name
+        }
+        return (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
     }
 }

@@ -281,6 +281,11 @@ struct MacComposerBar: View {
     /// transcript belongs in. Re-run on a pairing change; the closure reads the pairing at call
     /// time, so a host switch cannot send audio to the old one.
     private func wireVoice() {
+        // The same lines the phone writes: one category, both platforms, so a report from either
+        // side is read the same way.
+        VoiceLog.shared.setSink { message in
+            ClientLog.note(message, level: .info, category: "voice")
+        }
         voice.transcribe = { [weak store] audio, mimeType in
             guard let store else { throw MacVoiceFailure.notConfigured }
             return try await store.transcribeVoice(audio, mimeType: mimeType)

@@ -43,13 +43,17 @@ public enum VoiceLoopState: String, CaseIterable, Sendable, Equatable {
         }
     }
 
-    /// The SF Symbol the strip draws. `waveform` is the loop's own mark in the composer, so the
-    /// indicator and the control read as the same thing.
+    /// The SF Symbol the strip and the composer's own control draw.
+    ///
+    /// Every state stays inside the waveform family and **never** falls back to a bare microphone:
+    /// `mic` is the dictation control's glyph, and two microphones side by side at 12 pt — one that
+    /// records a message, one that starts a conversation — is how the wrong one gets tapped. The
+    /// loop is the waveform; that is the whole distinction the composer is telling.
     public var glyph: String {
         switch self {
         case .off: return "waveform"
         case .starting: return "waveform.badge.mic"
-        case .listening: return "mic.fill"
+        case .listening: return "waveform.circle.fill"
         case .thinking: return "ellipsis"
         case .speaking: return "speaker.wave.2.fill"
         case .failed: return "exclamationmark.triangle.fill"

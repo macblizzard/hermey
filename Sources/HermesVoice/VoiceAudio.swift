@@ -78,7 +78,22 @@ public final class VoiceCaptureEngine {
         case microphoneDenied
         case descriptionMissing
         case noInputDevice
+        /// The audio session itself refused: the one failure that never reached the microphone,
+        /// and the only place an OSStatus from iOS survives for the person reading the log.
+        case sessionFailed(String)
         case engineFailed(String)
+
+        /// The name the log carries. A sentence is what the person reads; a name is what makes
+        /// "which step stopped it" answerable from a pasted log, and the two must not drift.
+        public var name: String {
+            switch self {
+            case .microphoneDenied: return "microphoneDenied"
+            case .descriptionMissing: return "descriptionMissing"
+            case .noInputDevice: return "noInputDevice"
+            case .sessionFailed: return "sessionFailed"
+            case .engineFailed: return "engineFailed"
+            }
+        }
 
         public var errorDescription: String? {
             switch self {
@@ -88,6 +103,8 @@ public final class VoiceCaptureEngine {
                 return "The microphone usage description is missing from the app configuration."
             case .noInputDevice:
                 return "No microphone is available. Connect one and start the conversation again."
+            case .sessionFailed(let why):
+                return "The audio session could not be started: \(why)"
             case .engineFailed(let why):
                 return "The microphone could not start: \(why)"
             }
@@ -123,6 +140,11 @@ public final class VoiceCaptureEngine {
     private var voicedBlocks = 0
     private var blockCount = 0
     private var isRunning = false
+    /// Diagnostics only: was a buffer ever handed to us, and did the first speech start already
+    /// make it into the log. Reset by every start, so a second conversation logs its own firsts.
+    private var sawFirstRawBuffer = false
+    private var loggedConvertFailure = false
+    private var loggedFirstSpeech = false
 
     #if os(iOS)
     private var interruptionObserver: NSObjectProtocol?
@@ -174,17 +196,35 @@ public final class VoiceCaptureEngine {
     /// the sentence to show. Idempotent: a second call while running does nothing.
     @MainActor
     public func start() async throws {
-        guard !isRunning else { return }
+        VoiceLog.note("start: entered")
+        guard !isRunning else {
+            VoiceLog.note("start: already running")
+            return
+        }
         // macOS terminates the process on first capture input without this string, and iOS only
         // shows the prompt when the key is present — so check it before touching AVFoundation.
         guard Bundle.main.object(forInfoDictionaryKey: "NSMicrophoneUsageDescription") as? String != nil else {
-            throw StartFailure.descriptionMissing
+            throw failed(.descriptionMissing)
         }
         guard await Self.requestMicrophonePermission() else {
-            throw StartFailure.microphoneDenied
+            throw failed(.microphoneDenied)
         }
         try VoiceAudioSession.activate()
         try beginStreaming()
+        VoiceLog.note("start: microphone open")
+    }
+
+    /// Log the named failure and hand it back, so the throw and the log cannot drift apart: every
+    /// `throw` in the start path goes through here, which is what makes a silent failure impossible.
+    private func failed(_ failure: StartFailure) -> StartFailure {
+        VoiceLog.note("start failed: \(failure.name) — \(failure.errorDescription ?? "")")
+        return failure
+    }
+
+    /// A log line from the audio thread. Hopped like every other callback the tap makes, because
+    /// nothing in the realtime block may block or allocate its way into a sink.
+    private func logFromAudioThread(_ message: String) {
+        Task { @MainActor in VoiceLog.note(message) }
     }
 
     /// Close the microphone and release the audio session. Safe to call in any state, from any
@@ -198,34 +238,42 @@ public final class VoiceCaptureEngine {
     private func beginStreaming() throws {
         let input = engine.inputNode
         let format = input.inputFormat(forBus: 0)
+        VoiceLog.note("format: input \(Int(format.sampleRate)) Hz, \(format.channelCount) ch")
         guard format.sampleRate > 0, format.channelCount > 0 else {
-            throw StartFailure.noInputDevice
+            throw failed(.noInputDevice)
         }
         guard let target = AVAudioFormat(commonFormat: .pcmFormatFloat32,
                                         sampleRate: config.sampleRate,
                                         channels: 1,
                                         interleaved: false),
               let converter = AVAudioConverter(from: format, to: target) else {
-            throw StartFailure.engineFailed("the input format could not be converted")
+            throw failed(.engineFailed("the input format could not be converted"))
         }
         self.targetFormat = target
         self.converter = converter
+        lock.lock()
+        sawFirstRawBuffer = false
+        loggedConvertFailure = false
+        loggedFirstSpeech = false
+        lock.unlock()
 
         // 30 ms at the hardware rate: one block per VAD step, so no second buffer to lose.
         let blockFrames = AVAudioFrameCount(max(256, format.sampleRate * config.blockSeconds))
         input.installTap(onBus: 0, bufferSize: blockFrames, format: format) { [weak self] buffer, _ in
             self?.consume(buffer)
         }
+        VoiceLog.note("tap: installed on input bus 0, up to \(blockFrames) frames per callback")
         engine.prepare()
         do {
             try engine.start()
         } catch {
             input.removeTap(onBus: 0)
-            throw StartFailure.engineFailed(error.localizedDescription)
+            throw failed(.engineFailed(error.localizedDescription))
         }
         lock.lock()
         isRunning = true
         lock.unlock()
+        VoiceLog.note("engine: running")
         #if os(iOS)
         observeInterruptions()
         #endif
@@ -248,6 +296,7 @@ public final class VoiceCaptureEngine {
         engine.inputNode.removeTap(onBus: 0)
         converter = nil
         targetFormat = nil
+        VoiceLog.note("stop: microphone closed")
         #if os(iOS)
         if let interruptionObserver {
             NotificationCenter.default.removeObserver(interruptionObserver)
@@ -268,6 +317,7 @@ public final class VoiceCaptureEngine {
                 guard let self else { return }
                 switch type {
                 case .began:
+                    VoiceLog.note("interruption: began (a call or another app took the microphone)")
                     self.onInterruption?("A call or another app took the microphone. The conversation stopped.")
                 case .ended:
                     // `.shouldResume` is the system saying the interruption is over; restarting
@@ -289,7 +339,9 @@ public final class VoiceCaptureEngine {
 
     /// Resample to 16 kHz, cut into fixed blocks, and run the per-block state machine.
     private func consume(_ buffer: AVAudioPCMBuffer) {
+        noteFirstBuffer(buffer)
         guard let target = targetFormat, let converter, let converted = convert(buffer, to: target, with: converter) else {
+            noteConvertFailure(buffer)
             return
         }
         guard let channel = converted.floatChannelData?[0] else { return }
@@ -308,6 +360,30 @@ public final class VoiceCaptureEngine {
             pending.removeFirst(blockFrames)
             process(block: slice)
         }
+    }
+
+    /// Once per start: proof that the tap is actually firing.
+    ///
+    /// This is the line that separates "the microphone never opened" from "the microphone is open
+    /// and nothing is coming out of it", and those two have different fixes.
+    private func noteFirstBuffer(_ buffer: AVAudioPCMBuffer) {
+        lock.lock()
+        let first = !sawFirstRawBuffer
+        if first { sawFirstRawBuffer = true }
+        lock.unlock()
+        guard first else { return }
+        logFromAudioThread("first buffer: \(buffer.frameLength) frames at \(Int(buffer.format.sampleRate)) Hz, \(buffer.format.channelCount) ch")
+    }
+
+    /// A tap that fires and a conversion that always fails reads identically from the outside —
+    /// silence. Say it once, with the format the conversion refused.
+    private func noteConvertFailure(_ buffer: AVAudioPCMBuffer) {
+        lock.lock()
+        let first = !loggedConvertFailure
+        if first { loggedConvertFailure = true }
+        lock.unlock()
+        guard first else { return }
+        logFromAudioThread("first buffer: could not convert \(buffer.frameLength) frames at \(Int(buffer.format.sampleRate)) Hz")
     }
 
     private func convert(_ buffer: AVAudioPCMBuffer,
@@ -366,6 +442,10 @@ public final class VoiceCaptureEngine {
                 collected = preRoll.suffix(min(10, preRoll.count)).flatMap { $0 }
                 collecting = true
                 voicedBlocks = 1
+                if !loggedFirstSpeech {
+                    loggedFirstSpeech = true
+                    logFromAudioThread("vad: speech started, rms \(Int(rms))")
+                }
             case .idle:
                 if collecting {
                     collected += samples
@@ -378,6 +458,7 @@ public final class VoiceCaptureEngine {
                 collecting = false
                 let voiced = Double(voicedBlocks) * config.blockSeconds
                 voicedBlocks = 0
+                logFromAudioThread("endpoint: \(String(format: "%.2f", Double(audio.count) / config.sampleRate)) s, \(String(format: "%.2f", voiced)) s voiced, keep \(keep)")
                 events.append(.utterance(VoiceUtterance(wav: VoiceWAV.encode(samples: audio, sampleRate: Int(config.sampleRate)),
                                                         duration: Double(audio.count) / config.sampleRate,
                                                         voicedDuration: voiced),
@@ -394,6 +475,7 @@ public final class VoiceCaptureEngine {
                 collecting = true
                 quietRun = 0
                 voicedBlocks = config.tripBlocks
+                logFromAudioThread("vad: speech over \(trip.rawValue), rms \(Int(rms)) — barge-in")
                 events.append(.bargeIn(trip))
             } else if collecting {
                 collected += samples
@@ -405,6 +487,7 @@ public final class VoiceCaptureEngine {
                     let voiced = Double(voicedBlocks) * config.blockSeconds
                     let keep = voicedBlocks >= config.minimumUtteranceBlocks
                     voicedBlocks = 0
+                    logFromAudioThread("endpoint: \(String(format: "%.2f", Double(audio.count) / config.sampleRate)) s after \(trip == nil ? "a turn" : "barge-in"), \(String(format: "%.2f", voiced)) s voiced, keep \(keep)")
                     events.append(.utterance(VoiceUtterance(wav: VoiceWAV.encode(samples: audio, sampleRate: Int(config.sampleRate)),
                                                             duration: Double(audio.count) / config.sampleRate,
                                                             voicedDuration: voiced),
@@ -427,27 +510,55 @@ public final class VoiceCaptureEngine {
     private static func requestMicrophonePermission() async -> Bool {
         #if os(iOS)
         let session = AVAudioSession.sharedInstance()
-        switch session.recordPermission {
+        let before = session.recordPermission
+        VoiceLog.note("permission: \(word(before))")
+        switch before {
         case .granted: return true
         case .denied: return false
         default:
-            return await withCheckedContinuation { continuation in
+            let granted = await withCheckedContinuation { continuation in
                 session.requestRecordPermission { continuation.resume(returning: $0) }
             }
+            VoiceLog.note("permission: prompt answered \(granted ? "granted" : "denied")")
+            return granted
         }
         #else
-        switch AVCaptureDevice.authorizationStatus(for: .audio) {
+        let status = AVCaptureDevice.authorizationStatus(for: .audio)
+        VoiceLog.note("permission: \(word(status))")
+        switch status {
         case .authorized:
             return true
         case .notDetermined:
-            return await withCheckedContinuation { continuation in
+            let granted = await withCheckedContinuation { continuation in
                 AVCaptureDevice.requestAccess(for: .audio) { continuation.resume(returning: $0) }
             }
+            VoiceLog.note("permission: prompt answered \(granted ? "granted" : "denied")")
+            return granted
         default:
             return false
         }
         #endif
     }
+
+    #if os(iOS)
+    /// The permission state in the log's words. `undetermined` is the one that matters: it is the
+    /// prompt, and a start that stops there is a prompt the user dismissed, not a dead microphone.
+    private static func word(_ status: AVAudioSession.RecordPermission) -> String {
+        switch status {
+        case .granted: return "granted"
+        case .denied: return "denied"
+        default: return "undetermined"
+        }
+    }
+    #else
+    private static func word(_ status: AVAuthorizationStatus) -> String {
+        switch status {
+        case .authorized: return "granted"
+        case .denied, .restricted: return "denied"
+        default: return "undetermined"
+        }
+    }
+    #endif
 }
 
 /// The session underneath the loop, on the platform that has one.
@@ -461,12 +572,28 @@ enum VoiceAudioSession {
     static func activate() throws {
         #if os(iOS)
         let session = AVAudioSession.sharedInstance()
-        try session.setCategory(.playAndRecord,
-                                mode: .voiceChat,
-                                options: [.defaultToSpeaker, .allowBluetooth])
-        // 30 ms is the block the VAD reasons in; asking the hardware for it avoids a second copy.
-        try? session.setPreferredIOBufferDuration(0.03)
-        try session.setActive(true)
+        do {
+            try session.setCategory(.playAndRecord,
+                                    mode: .voiceChat,
+                                    options: [.defaultToSpeaker, .allowBluetooth])
+            // 30 ms is the block the VAD reasons in; asking the hardware for it avoids a second copy.
+            try? session.setPreferredIOBufferDuration(0.03)
+            try session.setActive(true)
+        } catch {
+            // The one failure that never reaches the microphone, so the OSStatus is the whole
+            // explanation: keep it in the sentence and in the log rather than reporting a
+            // generic "could not start".
+            let code = (error as NSError).code
+            let why = "\(error.localizedDescription) [OSStatus \(code)]"
+            VoiceLog.note("session: activate failed — \(why)")
+            throw VoiceCaptureEngine.StartFailure.sessionFailed(why)
+        }
+        VoiceLog.note("session: active — playAndRecord/voiceChat, speaker by default")
+        #else
+        // Nothing to activate: macOS has no `AVAudioSession`, and the AVCaptureDevice permission
+        // checked in `start()` is the whole gate. Said out loud so a log that stops after
+        // `permission:` is not mistaken for a session that never came back.
+        VoiceLog.note("session: macOS has no audio session to activate")
         #endif
     }
 
@@ -475,6 +602,7 @@ enum VoiceAudioSession {
         // `.notifyOthersOnDeactivation` is what lets the user's music come back after the loop
         // ends; without it the session stays claimed until the app is suspended.
         try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
+        VoiceLog.note("session: released")
         #endif
     }
 }
