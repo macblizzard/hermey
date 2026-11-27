@@ -545,8 +545,10 @@ class AThinkingBotIsIdleSizedAndWearsIdlesEyes(unittest.TestCase):
         thinking = self.branch("thinking")
         # 0.42 was the shrink; the channel itself is gone now, so no state can resize at all.
         self.assertNotIn("pose.bodyScale", thinking, "thinking is drawn smaller than idle again")
-        self.assertNotIn("bodyScale", self.code(read(STATE)),
-                         "the pose grew a body scale again")
+        # The state's own pose function says nothing about the body's size. (The file does read
+        # `bodyScale` — in `silhouetteKey`, where the mask's key follows the body under a mark — so the
+        # guard is the drawing, not the whole file.)
+        self.assertNotIn("bodyScale", self.pose(), "the pose grew a body scale again")
         # No squash or stretch either: the pulse it keeps is a lift, which moves the body without
         # resizing it, and every state breathes on the same resting envelope.
         for channel in ("pose.sx =", "pose.sy ="):

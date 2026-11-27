@@ -43,6 +43,7 @@ AVATAR = UI / "OpenBotAvatar"
 
 RENDERER = AVATAR / "OpenBotAvatarRenderer.swift"
 VIEW = AVATAR / "OpenBotAvatarView.swift"
+STATE = AVATAR / "OpenBotAvatarState.swift"
 EDITOR = AVATAR / "OpenBotAvatarEditor.swift"
 PRESETS = AVATAR / "OpenBotAvatarPresets.swift"
 BOT_AVATAR_VIEW = UI / "BotAvatarView.swift"
@@ -235,7 +236,11 @@ class TheMaskIsKeyedByTheBody(unittest.TestCase):
 
     def test_the_frame_hands_the_drawer_the_body_it_is_drawing(self) -> None:
         metal = code(VIEW).split("case .metal:")[1]
-        self.assertIn("maskKey: model.bodyKey)", metal)
+        # The body's own path, and the part of the pose that moves its outline: a key of the body
+        # alone froze the mask at whichever pose first drew. Both are there, so neither can be
+        # dropped for the other.
+        self.assertIn('maskKey: model.bodyKey + "|" + pose.silhouetteKey)', metal)
+        self.assertIn("public var silhouetteKey: String", code(STATE))
 
     def test_a_colour_or_material_change_alone_keeps_the_mask(self) -> None:
         drawer = Drawer()
@@ -289,13 +294,15 @@ class EveryPresetDrawsItsOwnBody(unittest.TestCase):
         self.assertFalse(rebuilt, "the old rule must be the bug, or this file proves nothing")
 
     def test_the_states_share_one_body(self) -> None:
-        # The pills move the eyes, the pose and the tint; the silhouette is the same body in all nine
-        # drawings, so the mask is built once and the chips stay free.
+        # The pills move the eyes, the pose and the tint; at a held pose the silhouette is the same
+        # body, so the mask is built once and repeated frames stay free. (A state that *moves* the
+        # body — a celebration's turn and hop — is in the key, and rebuilds; see
+        # `Tests/test_avatar_face_motion_and_marks.py`.)
         drawer = Drawer()
         key = model_key(self.presets[7])
         self.assertTrue(drawer.adopt(key))
         for _ in range(9):
-            self.assertFalse(drawer.adopt(key), "a state chip must not rebuild the silhouette mask")
+            self.assertFalse(drawer.adopt(key), "a held pose must not rebuild the silhouette mask")
         # …and the state still reaches the drawing, through the pose and the two Canvas passes.
         view = code(VIEW)
         self.assertIn("frame(model: model, pose: pose", view)

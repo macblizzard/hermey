@@ -558,4 +558,33 @@ extension OpenBotAvatarPose {
         pose.marks = OpenBotAvatarMarks.sanitised(given.marks)
         return pose
     }
+
+    /// The part of this pose that moves the body's **outline**, as a string, and nothing else.
+    ///
+    /// The glass drawer keeps one texture per silhouette — the coverage the fragment masks itself
+    /// with and the distance field it reads for its bevel and its normal — and rebuilds it only when
+    /// the key changes. The key used to be the body's own path, which is right for a new preset and
+    /// wrong for a body that moves: a celebration turns the body a third of the ribbons' sweep (±π of
+    /// `yaw`) and lifts it (`lift`, ±2.2 units), `working` sways and squashes (`roll`, `sx`/`sy`), and
+    /// a mark shrinks it (`OpenBotAvatarMarks.bodyScale`). So the mask froze at whichever pose first
+    /// drew while the eyes and the ribbons turned over it, and the per-frame uniforms (`shape`,
+    /// `profile`) disagreed with the silhouette they were lighting.
+    ///
+    /// What is *not* here is as deliberate: a blink, a squint, a gaze, the arch and the ribbons change
+    /// what is drawn over the body, never its edge, and a key that carried them would rebuild the mask
+    /// for a blink. `pitch` is here because it foreshortens the outline; `marks` by the one number they
+    /// contribute (`bodyScale`), so the mask shrinks with the body the marks replaced.
+    ///
+    /// Bucketed, because one rebuild is tens of millions of multiply-adds (`analyticField`) and a
+    /// rebuild per frame at 10 Hz would be the whole animation budget. Every step is under a pixel at
+    /// the sizes this material is drawn at: 1/32 rad of turn and of pitch (1.8°), half a degree of
+    /// roll, half a unit of lift, 1 % of squash and stretch, and 2 % of the body's own scale.
+    public var silhouetteKey: String {
+        func bucket(_ value: Double, _ step: Double) -> Int {
+            value.isFinite ? Int((value / step).rounded()) : 0
+        }
+        let scale = OpenBotAvatarMarks.bodyScale(marks)
+        return "\(bucket(yaw, 1.0 / 32)) \(bucket(pitch, 1.0 / 32)) \(bucket(roll, 0.5)) "
+            + "\(bucket(lift, 0.5)) \(bucket(sx, 0.01)) \(bucket(sy, 0.01)) \(bucket(scale, 0.02))"
+    }
 }

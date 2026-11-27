@@ -140,6 +140,23 @@ public enum OpenBotAvatarStateChoice: Hashable, Sendable {
         return nil
     }
 
+    /// Whether this state may hand the body over to a mark at some moment.
+    ///
+    /// The question a glass surface has to answer *before* a frame, because the answer picks the
+    /// drawing (`BotAvatarGlassRoute.decide`): the shader's pass is one lit silhouette, so it cannot
+    /// draw a mark or shrink the body under it, while the painted material does both. A built-in
+    /// state never carries one — the eight are mark-free by construction, and a guard refuses a mark
+    /// in any of their branches — so they keep the shader. A definition of a host's own may, and
+    /// there is no way to know without running host code for a pose this frame has not drawn yet, so
+    /// it answers yes and takes the painted glass: a calmer grade of glass, never a full-size body
+    /// with a full-size mark painted over it.
+    public var mayCarryMark: Bool {
+        switch self {
+        case .named: return false
+        case .defined: return true
+        }
+    }
+
     /// The definition behind this state, built-in or the host's own.
     public var definition: AvatarStateDefinition {
         switch self {

@@ -457,16 +457,19 @@ class TheEightStatesAreUntouched(unittest.TestCase):
                         renderer.index("markShapes(pose.marks"))
 
     def test_the_body_is_filled_at_its_own_scale(self):
-        # The silhouette is the body's own, through the frame's one transform — no `shrink`, and no
-        # `bodyScale` anywhere near the pass that draws it. The body travels with the path as the
-        # mask's key, because the texture the drawer keeps is a picture of that one silhouette.
+        # The silhouette is the body's own, through the frame's one transform — the mark's shrink
+        # lives *inside* `bodyTransform` (`OpenBotAvatarMarks.bodyScale`), so this route names
+        # neither, and the shader never draws a body at a size the painter would not.
         view = code(read(VIEW))
         metal_route = view.split("case .metal:")[1]
         self.assertIn("BotAvatarGlassView(surface: glass,", metal_route)
         self.assertIn("path: model.silhouette.applying(face),", metal_route)
-        self.assertIn("maskKey: model.bodyKey)", metal_route)
         self.assertNotIn("bodyScale", metal_route)
         self.assertNotIn("shrink", metal_route)
+        # The mask's key is the body **and** the part of the pose that moves its outline: the drawer
+        # keeps one picture of one silhouette, so a preset must rebuild it and so must a turn, a hop
+        # or a squash — a key that is only the body froze the mask at the first pose that drew.
+        self.assertIn('maskKey: model.bodyKey + "|" + pose.silhouetteKey)', metal_route)
         # …and the texture is filled from that path, in the body's own tint.
         layer = read(LAYER)
         self.assertIn("context.addPath(path.cgPath)", layer)

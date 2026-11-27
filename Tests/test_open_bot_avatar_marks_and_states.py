@@ -175,10 +175,13 @@ class TheBodyScaleIsTheOneUpstreamFixTakenIn(unittest.TestCase):
         body = body[:body.index("\n    }")]
         self.assertIn("marks.contains { grown($0.weight) > 0 }", body)
         self.assertIn("max(scale, left(markFrom))", body)
-        # And the renderer takes the body's size from that one function, and nothing else.
+        # And every reader takes the body's size from that one function: the slice stack's shrink in
+        # `draw`, and the frame's one transform (`bodyTransform`), so the painted ramp, the shader's
+        # box and the mask all shrink together and none re-derives a scale of its own.
         renderer = code(RENDERER)
-        self.assertIn("let bodyScale = OpenBotAvatarMarks.bodyScale(pose.marks)", renderer)
-        self.assertEqual(renderer.count("bodyScale ="), 1, "a second body scale appeared")
+        self.assertEqual(renderer.count("OpenBotAvatarMarks.bodyScale(pose.marks)"), 2,
+                         "the body's size is read somewhere else, or not at all")
+        self.assertNotIn("pose.bodyScale", renderer)
 
 
 class TheMaterialDrawsTheBodyAndTheMarks(unittest.TestCase):

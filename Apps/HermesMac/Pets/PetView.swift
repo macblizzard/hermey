@@ -256,6 +256,14 @@ struct PetView: View {
                                   // 12 pt clear margin.
                                   backdrop: .pet,
                                   animates: pet.isVisible,
+                                  // There is no SwiftUI scene over this view: the face is the root of
+                                  // a bare `NSHostingView` in the pet's borderless `NSPanel`, so the
+                                  // environment's `ScenePhase` is its `.background` default and a
+                                  // face gated on it holds the rest pose for ever — a pet whose body
+                                  // hops and blinks around a face that never moves. The panel's own
+                                  // occlusion is this surface's visibility, and it reaches the view
+                                  // as `animates`.
+                                  gate: .host,
                                   label: "\(pet.botName), a desktop pet")
             } else {
                 BotAvatarStill(identity: pet.botID, color: pet.face, size: side)

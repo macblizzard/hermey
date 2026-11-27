@@ -13,11 +13,14 @@ struct BotAvatarGlassView: View {
     var surface: BotAvatarGlassSurface
     /// The silhouette the body is drawn through — the path the `Canvas` route fills, in view points.
     var path: Path
-    /// Which body this is (`OpenBotAvatarModel.bodyKey`), carried down to the drawer's mask cache.
+    /// Which body this is, and which pose of it: the definition's own outline plus the dimensions of
+    /// the pose that move that outline (`OpenBotAvatarModel.bodyKey` and
+    /// `OpenBotAvatarPose.silhouetteKey`), carried down to the drawer's mask cache.
     ///
     /// The `MetalKit` view keeps the silhouette's texture between frames, and `path` cannot be its
-    /// key: it carries the pose, which moves every frame. So the body comes through as itself, and a
-    /// new definition — a preset, a paste, a save — rebuilds the mask while a breath reuses it.
+    /// key: it is a `Path`, which is not what an equality check on a mask should cost. So the body
+    /// comes through as itself — a new definition (a preset, a paste, a save) rebuilds the mask — with
+    /// the buckets of the pose that turn, lift or squash it, and nothing of the pose that does not.
     var maskKey: String
 
     var body: some View {
