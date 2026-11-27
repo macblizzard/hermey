@@ -71,9 +71,11 @@ class TaskChecklistStrip(unittest.TestCase):
         self.assertIn("case .cancelled:", VIEW)
         self.assertIn(".strikethrough(row.item.status == .cancelled", VIEW)
 
-    def test_it_collapses_when_complete_and_opens_while_running(self) -> None:
+    def test_it_hides_once_everything_is_done(self) -> None:
+        """A finished board is not a trophy: the strip disappears rather than folding to a summary."""
+        self.assertIn("if board.isComplete {", VIEW)
+        self.assertIn("EmptyView()", VIEW)
         self.assertIn("overrideExpanded ?? board.isActive", VIEW)
-        self.assertIn('text += " · done"', VIEW)
 
     def test_a_long_board_scrolls_in_place(self) -> None:
         self.assertIn("visibleRowLimit = 8", VIEW)

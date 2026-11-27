@@ -31,24 +31,31 @@ public struct TaskChecklistView: View {
     }
 
     public var body: some View {
-        VStack(spacing: 0) {
-            header
-            if isExpanded {
-                Hairline(color: Tokens.border)
-                taskList
+        // A finished board leaves no trace: the strip exists to show what is left to run, and
+        // once nothing is left it is only clutter above the composer. (`isComplete` is false
+        // while anything is still pending or running, so this can't hide live work.)
+        if board.isComplete {
+            EmptyView()
+        } else {
+            VStack(spacing: 0) {
+                header
+                if isExpanded {
+                    Hairline(color: Tokens.border)
+                    taskList
+                }
             }
+            .background(
+                RoundedRectangle(cornerRadius: 11, style: .continuous)
+                    .fill(Tokens.surfaceRaised)
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 11, style: .continuous)
+                    .strokeBorder(Tokens.border, lineWidth: 1)
+            )
+            .clipShape(RoundedRectangle(cornerRadius: 11, style: .continuous))
+            .padding(.bottom, 6)
+            .accessibilityElement(children: .contain)
         }
-        .background(
-            RoundedRectangle(cornerRadius: 11, style: .continuous)
-                .fill(Tokens.surfaceRaised)
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: 11, style: .continuous)
-                .strokeBorder(Tokens.border, lineWidth: 1)
-        )
-        .clipShape(RoundedRectangle(cornerRadius: 11, style: .continuous))
-        .padding(.bottom, 6)
-        .accessibilityElement(children: .contain)
     }
 
     // MARK: Header

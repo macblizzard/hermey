@@ -57,3 +57,30 @@ Full reports: `2026-11-27-voice.md`, `-attachments.md`, `-updates.md`, `-chat.md
 ## Fix pass
 
 Ordered by severity; each fix lands with a test that fails without it.
+
+## Fix pass — shipped in 0.1.698 + hermeyd 0.8.28
+
+| # | finding | fixed in | proof |
+|---|---|---|---|
+| 1 | voice: barge-in fired ~33×/s and re-seeded the capture | `fix/audit-voice` | latch + one-trip test, red-proofed (10 failures on baseline) |
+| 2 | voice: a completion could be spoken for the wrong turn | `fix/audit-voice` | session-conditioned completion, red-proofed |
+| 3 | voice: abandoned start tore down the next conversation | `fix/audit-voice` | start epoch checked at every await, red-proofed |
+| 4 | chat: dead generation guard hid decorated rows (lost pictures) | `fix/audit-chat-compose` | generation threaded + behavioural adopt test |
+| 5 | compose: Send could double-fire | `fix/audit-chat-compose` | claims the turn before the first await, concurrent-send test |
+| 6 | compose: Mac could not send attachment-only | `fix/audit-chat-compose` | passes `hasAttachments` like the phone |
+| 7 | compose: bare slash commands dead-looped | `fix/audit-chat-compose` | `nativeActions` set, falls through to send |
+| 8 | chat: delete in the paged half stayed on screen | `fix/audit-chat-compose` | retired row removed before merge |
+| 9 | updates: iOS feed 404s when a hermeyd release is latest | `fix/audit-updates` | Pages document first, release asset fallback |
+| 10 | updates: host "Try again" installed then reported failure | `fix/audit-updates` | failure phase is retryable |
+| 11 | updates: manual check hid behind Settings | `fix/audit-updates` | joins in-flight check and surfaces its card |
+| 12 | host: state write after binary swap | `fix/audit-updates` | state written first, refuses to swap otherwise |
+| 13 | relay: proxied pairing could mint a code | `fix/audit-relay` | proxy headers refused for mint, attack-chain test |
+| 14 | relay: engine token in the dial log | `fix/audit-relay` | scrubbed, test asserts absence |
+| 15 | relay: socket racing a revoke stayed open | `fix/audit-relay` | revoked registry, closes 4403 |
+| 16 | attachments: byte cache keyed by name | `fix/audit-relay` | keyed by profile + reference |
+| 17 | faces: pet avatar frozen at rest pose | `fix/audit-faces` | motion gate by host, pet passes it |
+| 18 | faces: glass body never shrank under a mark | `fix/audit-faces` | route refuses glass for marks + body transform |
+| 19 | faces: glass silhouette frozen at first pose | `fix/audit-faces` | silhouette key from the pose |
+
+Not fixed, documented: Mac Sparkle installs cannot pass the signature check while the build is ad-hoc signed
+(`docs/SECURITY_TASKS.md`). Med/low items not in the table above remain open in each area report.
