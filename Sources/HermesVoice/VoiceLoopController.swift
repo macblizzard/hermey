@@ -254,8 +254,16 @@ public final class VoiceLoopController: ObservableObject {
     /// The one teardown. Every exit — the toggle, leaving the bot, backgrounding, a failed request,
     /// the spoken stop phrase — comes through here, because a path that forgets to stop the capture
     /// leaves the microphone open with nothing reading it.
-    public func stop() {
+    ///
+    /// `keepingSpeech` is true for the person's own stop and false for every exit they did not ask
+    /// for. A tap on the control in the middle of a sentence is the ordinary way to end a thought on
+    /// this loop, so the words are handed to the host before the microphone closes; backgrounding,
+    /// changing conversation and failing all discard, because there is either no conversation left
+    /// to send them to or no time to upload them.
+    public func stop(keepingSpeech: Bool = true) {
         if state != .off { VoiceLog.note("stop: requested from \(state.rawValue)") }
+        // Before the microphone closes: closing it is what throws the buffer away.
+        let pending = keepingSpeech ? capture.finishCollecting() : nil
         generation = UUID()
         awaitingReply = false
         pipelineTask?.cancel()
@@ -272,6 +280,7 @@ public final class VoiceLoopController: ObservableObject {
         player.stopPlayback()
         capture.isPlaybackActive = false
         transition(to: .off)
+        if let pending { sendAfterStop(pending) }
     }
 
     /// Called by the shell when the app leaves the foreground — and, on the Mac, when the window
@@ -279,7 +288,7 @@ public final class VoiceLoopController: ObservableObject {
     /// session indicator would still show a recording, and a resumed app would have a dead stream.
     public func noteBackgrounded() {
         guard state.ownsMicrophone else { return }
-        stop()
+        stop(keepingSpeech: false)
         notice = "The conversation stopped when the app went to the background."
     }
 
@@ -287,7 +296,8 @@ public final class VoiceLoopController: ObservableObject {
     /// flight belongs to the conversation that was on screen.
     public func noteConversationChanged() {
         guard state.ownsMicrophone else { return }
-        stop()
+        // The utterance in flight was said to the conversation that is no longer on screen.
+        stop(keepingSpeech: false)
     }
 
     /// The host finished a turn. Only a turn this loop sent gets spoken, and only if it has not been
@@ -382,26 +392,67 @@ public final class VoiceLoopController: ObservableObject {
             return
         }
         interruptedTurn = false
-        let current = generation
         setState(.thinking, engine: .thinking)
+        transcribe(utterance, how: .turn)
+    }
+
+    /// The sentence he ended with the control.
+    ///
+    /// The microphone is already closed and nothing is spoken back — he stopped the conversation,
+    /// so a reply read aloud to a room he has left would be absurd. What he said still goes to the
+    /// host, because the alternative is that tapping stop quietly deletes the sentence he just
+    /// spoke. That path is also how "stop" itself gets recognised: it is a transcript like any
+    /// other, and it is tested for before anything is sent.
+    private func sendAfterStop(_ utterance: VoiceUtterance) {
+        guard state == .off else { return }
+        VoiceLog.note("turn: ended by the control — sending \(String(format: "%.2f", utterance.voicedDuration)) s of it")
+        transcribe(utterance, how: .sendOnly)
+    }
+
+    /// The two shapes a transcription takes.
+    private enum Delivery: Equatable {
+        /// The loop is live: the words become a turn and its reply is spoken.
+        case turn
+        /// The loop was stopped with the words still in hand: they become a turn, and nothing is
+        /// spoken back, because there is nobody listening for it.
+        case sendOnly
+    }
+
+    /// One utterance → text → a turn (or nothing at all).
+    ///
+    /// **Every** transcript passes through here, whichever way the utterance ended — a pause, the
+    /// ceiling, or a tap on the control. That is deliberate: the stop phrase can only be recognised
+    /// from a transcript, so a build in which the stop test only ran on one of those paths could not
+    /// hear "stop" at all. In 0.1.692 it ran on none of them, because no utterance ever ended.
+    private func transcribe(_ utterance: VoiceUtterance, how: Delivery) {
+        let current = generation
         VoiceLog.note("transcribe: \(utterance.wav.count) bytes, \(String(format: "%.2f", utterance.duration)) s → host")
 
         Task { [weak self] in
             guard let self else { return }
             do {
                 let transcript = try await self.wiring.transcribe(utterance.wav, "audio/wav")
-                guard self.generation == current, self.state == .thinking else {
+                guard self.isStillDelivering(how, generation: current) else {
                     VoiceLog.note("transcribe: answered after the loop moved on — dropped")
                     return
                 }
                 let text = transcript.trimmingCharacters(in: .whitespacesAndNewlines)
                 VoiceLog.note("transcribe: answered with \(text.count) characters")
 
+                // The stop phrase, first: it is the one thing he says that must never become a
+                // turn, and the only thing that has to work whatever path produced the text.
+                if VoicePolicy.isStopPhrase(text) {
+                    VoiceLog.note("stop phrase: heard \"\(text)\"")
+                    self.stop(keepingSpeech: false)
+                    self.notice = "Said “\(text.lowercased())” — the conversation ended."
+                    return
+                }
+
                 // A silent room must not become a turn: Whisper answers silence with a phrase of
                 // its own invention. Dropping it here is what keeps the loop from talking to itself.
                 if VoicePolicy.isHallucination(text) {
                     VoiceLog.note("transcribe: dropped as silence — “\(text)”")
-                    self.returnToListening()
+                    self.returnToListening(how)
                     return
                 }
                 // Our own reply, back through the microphone. Only within a few seconds of the
@@ -410,24 +461,45 @@ public final class VoiceLoopController: ObservableObject {
                    Date().timeIntervalSince(at) < Self.echoGuardSeconds,
                    VoicePolicy.isSelfEcho(text, spoken: self.lastSpokenText) {
                     VoiceLog.note("transcribe: dropped as our own reply coming back")
-                    self.returnToListening()
-                    return
-                }
-                if VoicePolicy.isStopPhrase(text) {
-                    self.stop()
-                    self.notice = "Said “\(text.lowercased())” — the conversation ended."
+                    self.returnToListening(how)
                     return
                 }
 
                 self.heardText = text
-                self.awaitingReply = true
-                VoiceLog.note("turn: sent — “\(text)”")
-                self.wiring.sendTurn(text)
-                self.startReplyWatchdog()
+                switch how {
+                case .turn:
+                    self.awaitingReply = true
+                    VoiceLog.note("turn: sent — “\(text)”")
+                    self.wiring.sendTurn(text)
+                    self.startReplyWatchdog()
+                case .sendOnly:
+                    // No watchdog and no `awaitingReply`: the loop is off, so the reply arrives as
+                    // text in the conversation rather than being spoken into an empty room.
+                    VoiceLog.note("turn: sent after stop — “\(text)”")
+                    self.wiring.sendTurn(text)
+                }
             } catch {
                 guard self.generation == current else { return }
-                self.fail(Self.message(for: error))
+                switch how {
+                case .turn:
+                    self.fail(Self.message(for: error))
+                case .sendOnly:
+                    // A failed upload cannot fail a conversation that has already ended; it is a
+                    // sentence that did not arrive, and it says so rather than pretending.
+                    VoiceLog.note("transcribe: failed after stop — \(Self.describe(error))")
+                    self.errorMessage = Self.message(for: error)
+                }
             }
+        }
+    }
+
+    /// Is the answer still wanted? A turn must still be in flight; a sentence sent from a stopped
+    /// loop must still be the last thing that happened.
+    private func isStillDelivering(_ how: Delivery, generation: UUID) -> Bool {
+        guard self.generation == generation else { return false }
+        switch how {
+        case .turn: return state == .thinking
+        case .sendOnly: return state == .off
         }
     }
 
@@ -476,6 +548,13 @@ public final class VoiceLoopController: ObservableObject {
         setState(.listening, engine: .listening)
     }
 
+    /// The same, for a transcript that may have come back after the loop was stopped: there is
+    /// nothing to return to, and arming the capture would be a microphone the person just closed.
+    private func returnToListening(_ how: Delivery) {
+        guard how == .turn else { return }
+        returnToListening()
+    }
+
     /// Publish the state, and optionally move the capture with it.
     ///
     /// The two are separate because a barge-in changes what the *user* sees without changing what
@@ -519,14 +598,14 @@ public final class VoiceLoopController: ObservableObject {
     /// happened rather than after the stop it triggered.
     private func fail(_ message: String) {
         VoiceLog.note("failed: \(message)")
-        stop()
+        stop(keepingSpeech: false)
         errorMessage = message
         transition(to: .failed)
     }
 
     private func restartIfActive() {
         guard state.ownsMicrophone else { return }
-        stop()
+        stop(keepingSpeech: false)
         start()
     }
 

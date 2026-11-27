@@ -33,7 +33,11 @@ public struct VoiceVADConfig: Sendable, Equatable {
     public var preRollSeconds: Double = 1.2
     public var endpointSilenceSeconds: Double = 0.6
     public var minimumUtteranceSeconds: Double = 0.30
-    public var maximumUtteranceSeconds: Double = 30
+    /// The longest an utterance may run before it ends itself and is delivered. It exists so a
+    /// stream that never goes quiet (a fan, a held-open microphone, someone talking for a minute)
+    /// cannot grow a buffer forever: at 20 s the words are sent, and the next sentence starts a
+    /// fresh collection rather than inheriting this one.
+    public var maximumUtteranceSeconds: Double = 20
     /// The share of the `sustainedSeconds` window that must be above the trigger. 0.8 of 300 ms is
     /// 240 ms of speech — long enough that a cough or a keyboard thump cannot do it.
     public var majorityFraction: Double = 0.8
@@ -55,6 +59,26 @@ public struct VoiceVADConfig: Sendable, Equatable {
     /// The lowest the end-of-speech boundary may sit, in int16 RMS. A phone's room reads 15–30;
     /// a constant below that is a boundary the room itself can never be quiet enough to cross.
     public var endpointSilenceMinimum: Double = 60
+    /// Whether the end-of-speech boundary follows the speech this utterance has actually produced,
+    /// instead of a level derived from a measured floor.
+    ///
+    /// False on the Mac, which endpoints correctly and whose numbers must not move; true for a
+    /// quiet input (`tunedForQuietInput()`), where every calibrated-floor derivation has failed:
+    /// a floor measured before anyone speaks is a floor measured wrong, and 0.1.692 is exactly that
+    /// (blocks 2 and 3 of the "room" were his voice, so the room became 102 and the boundary 154 —
+    /// above the voice it was supposed to sit under). A level that is a fraction of the speech just
+    /// heard cannot make that mistake: it is strictly below the voice by construction.
+    public var endpointFollowsSpeech: Bool = false
+    /// Where the end-of-speech boundary sits inside the utterance's own voiced level: 0.45 of its
+    /// average, so a pause has to be quieter than roughly half his volume to count as a pause.
+    public var endpointVoicedFraction: Double = 0.45
+    /// How much of the way to a quieter block the tracked floor falls in one step. Fast: the room
+    /// gets quieter between sentences and the next one must not be judged against the old room.
+    public var floorFallFraction: Double = 0.5
+    /// How much of the way to a louder quiet block the tracked floor rises in one step. Slow (4 %
+    /// a block, ~0.75 s to converge): a fan or a passing car must not become the new floor in one
+    /// block and swallow the person talking under it.
+    public var floorRiseFraction: Double = 0.04
     /// How many blocks report their own level at the head of a stream. Five is 150 ms: enough to
     /// tell a silent tap from a quiet one, and short enough to be five lines in a pasted log.
     public var diagnosticBlockCount: Int = 5
@@ -88,9 +112,10 @@ public struct VoiceVADConfig: Sendable, Equatable {
     /// The same two levels when the trigger's floor and the room's are not the same measurement.
     ///
     /// The trigger follows the floor the barge detector holds, exactly as it did before this change
-    /// — it is the half that works, and it must keep working. The endpoint boundary follows the
-    /// room the stream itself reported, which at the head of a conversation is read from its first
-    /// quiet blocks (`floorFromAmbient`) because the detector has not calibrated yet.
+    /// — it is the half that works, and it must keep working. The endpoint boundary is the desktop
+    /// rule, kept for the phase where a reply is being collected (`case .thinking, .speaking`);
+    /// the listening phase derives its boundary from the utterance's own speech instead
+    /// (`VoiceUtteranceGate.endpointLevel`).
     public func listeningLevels(triggerFloor: Double, roomFloor: Double) -> VoiceLevels {
         VoiceLevels(trigger: max(triggerFloor * bargeMultiplier, listeningTriggerFloor),
                     silence: endpointSilence(floor: roomFloor))
@@ -98,29 +123,31 @@ public struct VoiceVADConfig: Sendable, Equatable {
 
     /// The boundary a collection ends against, for a room whose floor is `floor`.
     ///
-    /// A step above the floor, never the floor itself: a room's own blocks sit at its floor and
-    /// drift around the 90th percentile, so a boundary drawn *at* the floor can never be met by
-    /// the room it was measured in — the 0.1.691 log is exactly that (ambient 5–28 RMS against a
-    /// boundary of 8, so a sentence that had already tripped never ended). `floor × 1.5` with a 60
-    /// minimum lands between that room (15–28) and that speech (130+), and the cap at `silenceRMS`
-    /// leaves the Mac — whose floor is clamped to ≥200 — on the constant 200 it always used.
+    /// This is the desktop rule and the default: a step above the floor, never the floor itself,
+    /// capped at `silenceRMS`. A Mac's floor is clamped to ≥200, so every floor it can measure
+    /// lands on the constant 200 it has always used — macOS is numerically unchanged by design.
+    /// It is also the fallback for `endpointSilence(voicedAverage:floor:)` before any speech has
+    /// been heard.
     public func endpointSilence(floor: Double) -> Double {
         min(silenceRMS, max(floor * endpointSilenceMultiplier, endpointSilenceMinimum))
     }
 
-    /// The floor a stream is reporting *before* anyone speaks, read from its own quiet blocks.
+    /// The boundary a collection ends against when the utterance has produced `voicedAverage` RMS.
     ///
-    /// The barge detector learns a floor by calibrating for 450 ms, but the listening phase at the
-    /// head of a conversation has not fed it yet — speech can arrive inside that window (in the
-    /// 0.1.691 log it arrived after five blocks), and `quietFloor` is then only its initial
-    /// minimum. Rather than falling back to a constant, the same estimator the detector would have
-    /// used — the 90th percentile of the quiet blocks, never under the input's minimum — is
-    /// applied to the blocks this stream has actually reported.
-    public func floorFromAmbient(_ blocks: [Double]) -> Double {
-        guard !blocks.isEmpty else { return measuredFloorMinimum }
-        let sorted = blocks.sorted()
-        let index = min(sorted.count - 1, Int((Double(sorted.count) * 0.9).rounded(.up)) - 1)
-        return max(sorted[max(0, index)], measuredFloorMinimum)
+    /// `clamp(endpointVoicedFraction × voicedAverage, endpointSilenceMinimum, silenceRMS)` — 0.45,
+    /// 60, 200. Three properties, and each one is a failure of the old derivation:
+    ///
+    /// * **Strictly below the speech that has just been heard.** 0.45 × average is under the
+    ///   average for any positive level, and the 60 floor is under the lowest level that can open
+    ///   a trigger at all (`listeningTriggerFloor`, 120), so a boundary can never sit above the
+    ///   voice it is supposed to let rest on it. That is the 0.1.692 bug inverted.
+    /// * **It moves with him.** A quiet talker gets a quiet boundary; a loud room does not raise it
+    ///   past his own voice, because it is not derived from the room at all.
+    /// * **It still cannot drift into the floor of a silent room**, because 60 is above a phone's
+    ///   ambient (15–30) and below every block that could be called speech.
+    public func endpointSilence(voicedAverage: Double, floor: Double) -> Double {
+        guard endpointFollowsSpeech, voicedAverage > 0 else { return endpointSilence(floor: floor) }
+        return min(silenceRMS, max(voicedAverage * endpointVoicedFraction, endpointSilenceMinimum))
     }
 
     /// The same rules, calibrated for an input that is not a desktop microphone.
@@ -129,12 +156,16 @@ public struct VoiceVADConfig: Sendable, Equatable {
     /// allowed to bottom out at 200. A phone's input route — behind the receiver, behind the
     /// playAndRecord category, and until now behind `.voiceChat`'s voice processing — reports one
     /// to two orders of magnitude less for the same room. The *multipliers* are unchanged, so the
-    /// trigger still tracks whatever floor is measured; only the two absolute bounds move, and only
-    /// on iOS (the engine applies this; the Mac keeps the desktop constants exactly).
+    /// trigger still tracks whatever floor is measured; only the two absolute bounds move, and one
+    /// rule changes shape: the end-of-speech boundary stops being derived from a room measurement
+    /// at all and becomes a fraction of the speech the utterance itself produced
+    /// (`endpointFollowsSpeech`). Only iOS gets this (the engine applies it; the Mac keeps the
+    /// desktop constants exactly).
     public func tunedForQuietInput() -> VoiceVADConfig {
         var copy = self
         copy.measuredFloorMinimum = 8
         copy.listeningTriggerFloor = 120
+        copy.endpointFollowsSpeech = true
         return copy
     }
 }
@@ -153,6 +184,49 @@ public struct VoiceLevels: Sendable, Equatable {
     public init(trigger: Double, silence: Double) {
         self.trigger = trigger
         self.silence = silence
+    }
+}
+
+/// The room's level, tracked from the quiet side, block by block, for as long as the stream runs.
+///
+/// The estimator this replaces took the 90th percentile of the opening blocks, once. That is right
+/// only if the first blocks are room tone, and in the owner's log they were not: `block 1 rms 25`,
+/// `block 2 rms 102`, `block 3 rms 130` — he starts talking immediately, so the "room" was read as
+/// 102 and the end-of-speech boundary came out at 154, *above* his quiet speech. Every pause at or
+/// above his voice then read as speech, the 600 ms quiet run never accumulated, and no utterance
+/// ever ended on that phone.
+///
+/// A window of percentiles cannot tell room from the beginning of a sentence. A gate can:
+///
+/// * a block at or above the trigger is speech, and never moves the floor at all — speech can only
+///   ever lower the bar it has to clear, which is the inverse of the bug;
+/// * a quiet block *below* the floor drops it most of the way at once (`floorFallFraction`): the
+///   room gets quieter when the fan stops, and the next sentence must not be judged against the old
+///   room;
+/// * a quiet block *above* the floor raises it slowly (`floorRiseFraction`, ~0.75 s to converge):
+///   a fan switching on, or a car passing, must not become the new floor in one block and silence
+///   the person talking underneath it.
+public struct VoiceFloorTracker {
+    /// The floor in force now, int16 RMS, never under `measuredFloorMinimum`.
+    public private(set) var level: Double
+    private let config: VoiceVADConfig
+
+    public init(config: VoiceVADConfig = VoiceVADConfig()) {
+        self.config = config
+        self.level = config.measuredFloorMinimum
+    }
+
+    /// Consume one block. `trigger` is the level that block was judged against, so "this is
+    /// speech" means the same thing here as it does in the gate.
+    public mutating func feed(rms: Double, trigger: Double) {
+        guard rms < trigger else { return }
+        let target = Swift.max(rms, config.measuredFloorMinimum)
+        if target < level {
+            level += (target - level) * config.floorFallFraction
+        } else {
+            level += (target - level) * config.floorRiseFraction
+        }
+        level = Swift.max(level, config.measuredFloorMinimum)
     }
 }
 
@@ -267,14 +341,29 @@ public struct VoiceBargeDetector {
 /// sentence?", which is a different question from "did someone talk over me?". The minimum voiced
 /// length is what stops a cough, a door or a keyboard from becoming a turn — a cough is above the
 /// trigger for ~150 ms and then silent, so it collected audio but never enough of it.
+///
+/// The end-of-speech boundary is *not* an input. It is derived here, per block, from the speech this
+/// utterance has actually produced (`config.endpointSilence(voicedAverage:floor:)`, on a quiet input
+/// 0.45 × the running voiced average clamped to 60…200). That inversion is the fix for 0.1.692:
+/// as long as the boundary came from a floor measured before he spoke, it could sit above his voice
+/// and the utterance could never end. A boundary that is a fraction of the voice cannot.
 public struct VoiceUtteranceGate {
+    /// Why a collection ended. It is in the log because "the sentence ended" and "the sentence was
+    /// cut at the ceiling" are different things to whoever reads a pasted log.
+    public enum EndReason: String, Sendable, Equatable {
+        /// `endpointSilenceSeconds` of quiet below the utterance's own end-of-speech level.
+        case silence
+        /// The utterance outgrew `maximumUtteranceSeconds` and was delivered anyway.
+        case ceiling
+    }
+
     public enum Decision: Equatable, Sendable {
         /// Nothing to do: no speech has started, or the collection is still running.
         case idle
         /// Speech just started; the caller should begin buffering from here.
         case started
         /// The utterance ended. `keep` is false for a blip that was too short to be a turn.
-        case ended(keep: Bool)
+        case ended(keep: Bool, reason: EndReason)
     }
 
     private let config: VoiceVADConfig
@@ -282,50 +371,80 @@ public struct VoiceUtteranceGate {
     private var blocks = 0
     private var voiced = 0
     private var quietRun = 0
+    /// The room, tracked continuously from the quiet side. Kept across `reset()` on purpose: the
+    /// room does not change because a sentence ended.
+    private var floor: VoiceFloorTracker
+    /// What this utterance's voiced blocks have averaged. The end-of-speech level is derived from
+    /// it, so it may only ever be fed by speech.
+    private var voicedSum = 0.0
+    private var voicedCount = 0
 
     public init(config: VoiceVADConfig = VoiceVADConfig()) {
         self.config = config
+        self.floor = VoiceFloorTracker(config: config)
     }
 
     public var hasStarted: Bool { isCollecting }
 
+    /// The floor this stream has tracked. Logged with the first speech, so a pasted log shows the
+    /// room it was heard in rather than a number the reader has to guess at.
+    public var floorLevel: Double { floor.level }
+
+    /// The average of this utterance's voiced blocks — 0 before it has said anything.
+    public var voicedAverage: Double { voicedCount == 0 ? 0 : voicedSum / Double(voicedCount) }
+
+    /// The level a block must fall below to count as quiet, right now.
+    public var endpointLevel: Double {
+        config.endpointSilence(voicedAverage: voicedAverage, floor: floor.level)
+    }
+
+    /// Drop the utterance, keep the room. Called between phases and after every collection.
     public mutating func reset() {
         isCollecting = false
         blocks = 0
         voiced = 0
         quietRun = 0
+        voicedSum = 0
+        voicedCount = 0
     }
 
-    public mutating func feed(rms: Double, trigger: Double, silence: Double? = nil) -> Decision {
-        // The "no voice" boundary is the caller's, because it comes from the floor the caller
-        // measured; the desktop default is what it was before the two could differ.
-        let silenceRMS = silence ?? config.silenceRMS
+    /// Consume one block against `trigger`, the level the caller judged it by.
+    public mutating func feed(rms: Double, trigger: Double) -> Decision {
+        // Every block is offered to the floor, and only the quiet ones move it.
+        floor.feed(rms: rms, trigger: trigger)
         guard isCollecting else {
             guard rms >= trigger else { return .idle }
             isCollecting = true
             blocks = 1
             voiced = 1
+            voicedSum = rms
+            voicedCount = 1
             quietRun = 0
             return .started
         }
         blocks += 1
-        if rms >= trigger { voiced += 1 }
-        quietRun = rms < silenceRMS ? quietRun + 1 : 0
+        if rms >= trigger {
+            voiced += 1
+            voicedSum += rms
+            voicedCount += 1
+        }
+        // The boundary in force for this block, already below the speech heard so far.
+        quietRun = rms < endpointLevel ? quietRun + 1 : 0
         if quietRun >= config.endpointSilenceBlocks {
-            return finish()
+            return finish(.silence)
         }
         if blocks >= config.maximumUtteranceBlocks {
             // At the ceiling, keep what was said rather than throwing the words away — the same
             // choice the recorder's duration limit makes.
-            return finish()
+            return finish(.ceiling)
         }
         return .idle
     }
 
-    private mutating func finish() -> Decision {
+    private mutating func finish(_ reason: EndReason) -> Decision {
         let keep = voiced >= config.minimumUtteranceBlocks
         reset()
-        return .ended(keep: keep)
+        return .ended(keep: keep, reason: reason)
     }
 }
 

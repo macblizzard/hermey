@@ -151,7 +151,7 @@ class BargeInDuringAGeneration(unittest.TestCase):
 
 class Teardown(unittest.TestCase):
     def test_the_one_stop_closes_capture_and_playback(self) -> None:
-        body = swift_body(CONTROLLER, "public func stop()")
+        body = swift_body(CONTROLLER, "public func stop(keepingSpeech: Bool = true)")
         self.assertIn("capture.stop()", body)
         self.assertIn("player.stopPlayback()", body)
         self.assertLess(body.index("capture.stop()"), body.index("player.stopPlayback()"))
@@ -161,14 +161,14 @@ class Teardown(unittest.TestCase):
 
     def test_backgrounding_goes_through_it(self) -> None:
         body = swift_body(CONTROLLER, "public func noteBackgrounded()")
-        self.assertIn("stop()", body)
+        self.assertIn("stop(keepingSpeech: false)", body)
         # And the phone calls it when it leaves the foreground.
         self.assertIn("voiceLoop.noteBackgrounded()", PHONE)
         self.assertIn("scenePhase", PHONE)
 
     def test_leaving_the_conversation_goes_through_it(self) -> None:
         body = swift_body(CONTROLLER, "public func noteConversationChanged()")
-        self.assertIn("stop()", body)
+        self.assertIn("stop(keepingSpeech: false)", body)
         self.assertIn("loop.noteConversationChanged()", MAC_BAR)
         self.assertIn("loop.stop()", MAC_BAR.split(".onDisappear {", 1)[1][:400])
         self.assertIn("voiceLoop.stop()", PHONE.split(".onDisappear {", 1)[1][:400])
@@ -177,7 +177,7 @@ class Teardown(unittest.TestCase):
         # The first statement in the failure path is the teardown: a request that failed must never
         # leave a hot microphone behind a UI that has stopped promising an answer.
         body = swift_body(CONTROLLER, "private func fail(")
-        first = body.index("stop()")
+        first = body.index("stop(keepingSpeech: false)")
         self.assertLess(first, body.index("errorMessage = message"))
         self.assertNotIn("sendTurn", body)
 
@@ -224,7 +224,7 @@ class Endpointing(unittest.TestCase):
         self.assertIn("capture.setPhase(.listening)", body)
 
     def test_silence_cannot_become_a_turn(self) -> None:
-        body = swift_body(CONTROLLER, "private func deliver(")
+        body = swift_body(CONTROLLER, "private func transcribe(")
         self.assertIn("VoicePolicy.isHallucination(text)", body)
         self.assertIn("isHallucination", POLICY)
         self.assertIn("thank you for watching", POLICY)
@@ -250,14 +250,14 @@ class Speaking(unittest.TestCase):
         self.assertIn("self.wiring.synthesize(sentence)", body)
 
     def test_a_spoken_stop_ends_it(self) -> None:
-        body = swift_body(CONTROLLER, "private func deliver(")
+        body = swift_body(CONTROLLER, "private func transcribe(")
         stop_at = body.index("VoicePolicy.isStopPhrase(text)")
         send_at = body.index("self.wiring.sendTurn(text)")
         self.assertLess(stop_at, send_at)
-        self.assertIn("self.stop()", body[stop_at:])
+        self.assertIn("self.stop(keepingSpeech: false)", body[stop_at:])
 
     def test_echo_is_filtered_after_a_reply(self) -> None:
-        body = swift_body(CONTROLLER, "private func deliver(")
+        body = swift_body(CONTROLLER, "private func transcribe(")
         self.assertIn("VoicePolicy.isSelfEcho(text, spoken: self.lastSpokenText)", body)
         self.assertIn("echoGuardSeconds", body)
         self.assertIn("minimumEchoFragmentLength", POLICY)
@@ -532,26 +532,16 @@ class TheSilentStream(unittest.TestCase):
             self.assertEqual(new_silence, silence_rms, f"the Mac boundary moved at floor {floor}")
 
     def test_the_listening_trigger_follows_the_measured_floor(self) -> None:
-        # The engine asks the config for both levels from the floor it measured, and hands the
-        # silence boundary to the gate — the fixed `silenceRMS * 2` trigger is gone.
+        # The trigger is untouched, on purpose: it fired at 120 on his phone and it must keep
+        # doing exactly that. The engine asks the config for it from the detector's floor.
         listening = AUDIO.split("case .listening:", 1)[1].split("case .thinking, .speaking:", 1)[0]
-        # A measured detector floor while a turn has run, and the stream's own first blocks when
-        # it has not: at the head of a conversation the detector is not fed during `.listening`.
-        self.assertIn("detector.isFloorLocked", listening)
-        self.assertIn("? detector.quietFloor", listening)
-        self.assertIn("config.floorFromAmbient(listenAmbient)", listening)
-        self.assertIn("config.listeningLevels(triggerFloor: detector.quietFloor, roomFloor: roomFloor)",
-                      listening)
-        self.assertIn("gate.feed(rms: rms, trigger: levels.trigger, silence: levels.silence)",
-                      listening)
+        self.assertIn("config.listeningLevels(floor: detector.quietFloor).trigger", listening)
+        self.assertIn("gate.feed(rms: rms, trigger: trigger)", listening)
         self.assertNotIn("silenceRMS * 2", self.code(AUDIO))
         self.assertNotIn("silenceRMS * 2", self.code(VAD))
         # The rule is a multiplier over the floor, floored at a low absolute bound — not a constant.
         levels = swift_body(VAD, "public func listeningLevels(triggerFloor: Double, roomFloor: Double)")
         self.assertIn("max(triggerFloor * bargeMultiplier, listeningTriggerFloor)", levels)
-        boundary = swift_body(VAD, "public func endpointSilence(floor: Double)")
-        self.assertIn("min(silenceRMS, max(floor * endpointSilenceMultiplier, endpointSilenceMinimum))",
-                      boundary)
         # A phone's tuning moves the two *bounds* only: 8 RMS of floor is allowed, and 120 is the
         # lowest trigger. The multipliers are untouched, so the trigger still tracks the room.
         tuned = swift_body(VAD, "public func tunedForQuietInput()")
@@ -559,35 +549,173 @@ class TheSilentStream(unittest.TestCase):
         self.assertIn("copy.listeningTriggerFloor = 120", tuned)
         self.assertNotIn("bargeMultiplier", tuned)
 
-    def test_the_endpoint_boundary_sits_between_the_room_and_speech(self) -> None:
-        """The 0.1.691 log: `vad: speech started, rms 130`, then no `endpoint:` at all.
+    def test_the_endpoint_follows_the_voice_not_the_room(self) -> None:
+        """The 0.1.692 log: `vad: speech started, rms 130, floor 102, silence 154`.
 
-        The boundary was the floor clamped to 8 while the room's own blocks read 15–28, so 600 ms
-        of quiet could never accumulate — the utterance needed a room quieter than the room. The
-        boundary must be derived above that floor and below speech, it must never exceed the old
-        `silenceRMS`, and every endpoint line must name the level it used.
+        The floor was 102 because blocks 2 and 3 of the "room" were his own voice, and 1.5 × 102
+        is 154 — above the 130 he was speaking at. Every pause at or above his voice read as
+        speech, the 600 ms quiet run never accumulated, and no utterance ever ended. The boundary
+        is now a fraction of the speech the utterance itself produced, so it cannot be above it.
         """
-        for floor in range(8, 81):
-            silence = min(200, max(floor * 1.5, 60))
-            self.assertGreater(silence, floor,
-                               f"at floor {floor} the boundary collapsed back onto the room")
-            self.assertLess(silence, 130, f"at floor {floor} the boundary rose into the speech")
-        # The owner's own numbers: 28 of room, 130 of speech.
-        self.assertGreater(min(200, max(28 * 1.5, 60)), 28)
-        self.assertLess(min(200, max(28 * 1.5, 60)), 130)
+        boundary = swift_body(VAD, "public func endpointSilence(voicedAverage: Double, floor: Double)")
+        self.assertIn(
+            "guard endpointFollowsSpeech, voicedAverage > 0 else { return endpointSilence(floor: floor) }",
+            boundary)
+        self.assertIn(
+            "min(silenceRMS, max(voicedAverage * endpointVoicedFraction, endpointSilenceMinimum))",
+            boundary)
+        config = swift_body(VAD, "public struct VoiceVADConfig")
+        for field in ("endpointVoicedFraction: Double = 0.45",
+                      "endpointSilenceMinimum: Double = 60",
+                      "endpointSilenceSeconds: Double = 0.6"):
+            self.assertIn(field, config)
+        # Arithmetic: strictly under the voice it came from, never past the old cap, never under
+        # the floor a phone's room can reach.
+        for voiced in range(120, 4_001, 7):
+            silence = min(200.0, max(voiced * 0.45, 60.0))
+            self.assertLess(silence, voiced, f"the boundary rose into {voiced} of speech")
+            self.assertGreaterEqual(silence, 60)
+            self.assertLessEqual(silence, 200)
+        # His quiet voice: 130 of speech ends against 60, where the old rule said 154.
+        self.assertEqual(min(200.0, max(130 * 0.45, 60.0)), 60.0)
+        self.assertEqual(min(200.0, max(2_600 * 0.45, 60.0)), 200.0)
+        # The gate derives its own boundary and the engine passes nothing else in.
+        gate = swift_body(VAD, "public struct VoiceUtteranceGate")
+        self.assertIn("config.endpointSilence(voicedAverage: voicedAverage, floor: floor.level)", gate)
+        self.assertIn("public var endpointLevel: Double", gate)
+        self.assertNotIn("silence:", swift_body(VAD, "public mutating func feed(rms: Double, trigger: Double) -> Decision"))
 
-        # No calibration ran before speech, so the floor is read from the first blocks themselves.
-        floor = swift_body(VAD, "public func floorFromAmbient(_ blocks: [Double])")
-        # The same estimator the barge detector uses — the 90th percentile of the quiet blocks.
-        self.assertIn("(Double(sorted.count) * 0.9)", floor)
-        self.assertIn("max(sorted[max(0, index)], measuredFloorMinimum)", floor)
+    def test_the_floor_is_tracked_from_the_quiet_side_only(self) -> None:
+        """The guard that fails if a voiced block can ever raise the floor."""
+        tracker = swift_body(VAD, "public mutating func feed(rms: Double, trigger: Double)")
+        # A block at or above the trigger is speech: not offered to the floor at all.
+        self.assertIn("guard rms < trigger else { return }", tracker)
+        # Falls quickly, rises slowly — hysteresis, not a one-shot percentile.
+        self.assertIn("config.floorFallFraction", tracker)
+        self.assertIn("config.floorRiseFraction", tracker)
+        config = swift_body(VAD, "public struct VoiceVADConfig")
+        self.assertIn("floorFallFraction: Double = 0.5", config)
+        self.assertIn("floorRiseFraction: Double = 0.04", config)
+        # Every block is offered to it, from the one place that judges blocks.
+        gate = swift_body(VAD, "public struct VoiceUtteranceGate")
+        self.assertIn("floor.feed(rms: rms, trigger: trigger)", gate)
+        # And the one-shot estimator of the opening blocks is gone, not merely unused.
+        self.assertNotIn("floorFromAmbient", self.code(VAD))
+        self.assertNotIn("floorFromAmbient", self.code(AUDIO))
 
-        # The log carries the number, so the next report is evidence rather than a story.
+    def test_the_ceiling_ends_a_runaway_utterance(self) -> None:
+        """An utterance that never goes quiet ends itself at ~20 s and is delivered."""
+        config = swift_body(VAD, "public struct VoiceVADConfig")
+        self.assertIn("maximumUtteranceSeconds: Double = 20", config)
+        gate = swift_body(VAD, "public struct VoiceUtteranceGate")
+        self.assertIn("blocks >= config.maximumUtteranceBlocks", gate)
+        self.assertIn("return finish(.ceiling)", gate)
+        self.assertIn("case ceiling", gate)
+        # The log names it, so a ceiling is never confused with a pause in a pasted log.
+        listening = AUDIO.split("case .listening:", 1)[1].split("case .thinking, .speaking:", 1)[0]
+        self.assertIn("reason == .ceiling", listening)
+        self.assertIn('"ceiling \\(String(format:', listening)
+
+    def test_the_log_carries_each_endpoint_and_its_level(self) -> None:
+        # Three ways an utterance can end, three lines: the pause, the ceiling (same line, named)
+        # and the control. Each carries the numbers the next report is read against.
         endpoints = [line for line in AUDIO.splitlines()
                      if "endpoint: " in line and "logFromAudioThread" in line]
-        self.assertEqual(len(endpoints), 2, "both endpoint paths must log")
-        for line in endpoints:
-            self.assertIn("silence \\(Int(", line)
+        self.assertEqual(len(endpoints), 3, "every endpoint path must log")
+        # The listening pause carries the level the gate ended against; the barge-in collection
+        # carries the floor-derived one; the manual stop carries the voiced seconds it kept.
+        self.assertTrue(any("silence \\(level)" in line for line in endpoints))
+        self.assertTrue(any("silence \\(Int(" in line for line in endpoints))
+        manual = [line for line in endpoints if "endpoint: manual, " in line]
+        self.assertEqual(len(manual), 1)
+        self.assertIn("s voiced, keep ", manual[0])
+
+
+class StoppingByHand(unittest.TestCase):
+    """0.1.692, his second attempt: `stop: requested from listening` — and nothing was sent.
+
+    The tap closed the microphone and took the sentence with it, which made the loop unusable even
+    where the endpoint worked: ending a thought by hand is the ordinary way to use it.
+    """
+
+    def test_the_words_in_flight_are_taken_before_the_microphone_closes(self) -> None:
+        body = swift_body(CONTROLLER, "public func stop(keepingSpeech: Bool = true)")
+        self.assertIn("capture.finishCollecting()", body)
+        # Before `capture.stop()`: closing the microphone is what drops the buffer.
+        self.assertLess(body.index("capture.finishCollecting()"), body.index("capture.stop()"))
+        # And sent once the loop has settled, so the state it is sent from is the final one.
+        self.assertIn("sendAfterStop(pending)", body)
+        self.assertLess(body.index("transition(to: .off)"), body.index("sendAfterStop(pending)"))
+
+    def test_every_exit_he_did_not_ask_for_discards(self) -> None:
+        for name in ("private func fail(", "public func noteBackgrounded()",
+                     "public func noteConversationChanged()", "private func restartIfActive()"):
+            self.assertIn("stop(keepingSpeech: false)", swift_body(CONTROLLER, name), name)
+        # The control itself keeps the sentence: that is what the default means.
+        self.assertIn("public func stop(keepingSpeech: Bool = true)", CONTROLLER)
+
+    def test_the_engine_hands_back_the_voiced_audio(self) -> None:
+        body = swift_body(AUDIO, "public func finishCollecting()")
+        self.assertIn("guard collecting else { return nil }", body)
+        self.assertIn("voicedBlocks >= config.minimumUtteranceBlocks", body)
+        self.assertIn("VoiceWAV.encode(samples: audio", body)
+        # The line the next log is read for, in the words the task named.
+        self.assertIn('"endpoint: manual, ', body)
+        self.assertIn("s voiced, keep ", body)
+
+    def test_a_stopped_loop_still_sends_and_says_nothing(self) -> None:
+        body = swift_body(CONTROLLER, "private func sendAfterStop(")
+        self.assertIn("transcribe(utterance, how: .sendOnly)", body)
+        # Nothing is spoken back into a room he has left, and no watchdog waits for a reply.
+        self.assertNotIn("speakReply", body)
+        self.assertNotIn("startReplyWatchdog", body)
+        still = swift_body(CONTROLLER, "private func isStillDelivering(")
+        self.assertIn("case .sendOnly: return state == .off", still)
+        # A failed upload on that path cannot fail a conversation that has already ended.
+        transcribe = swift_body(CONTROLLER, "private func transcribe(")
+        self.assertIn("transcribe: failed after stop", transcribe)
+
+
+class TheSpokenStop(unittest.TestCase):
+    """"Also it was not stopping after i said stop."
+
+    The phrase can only be read from a transcript, and on that phone no utterance ever produced
+    one — so a spoken stop was never heard. It must not depend on the endpoint from either side:
+    every path that produces a transcript tests for it, first, before anything is sent.
+    """
+
+    def test_a_recognised_stop_ends_the_loop_and_sends_nothing(self) -> None:
+        body = swift_body(CONTROLLER, "private func transcribe(")
+        stop_at = body.index("VoicePolicy.isStopPhrase(text)")
+        self.assertLess(stop_at, body.index("self.wiring.sendTurn(text)"))
+        after = body[stop_at:]
+        self.assertIn("self.stop(keepingSpeech: false)", after)
+        self.assertIn("stop phrase: heard", after)
+        # The branch returns: the turn is never sent.
+        self.assertIn("return", after[:after.index("VoicePolicy.isHallucination(text)")])
+
+    def test_it_is_tested_before_the_other_verdicts(self) -> None:
+        body = swift_body(CONTROLLER, "private func transcribe(")
+        self.assertLess(body.index("VoicePolicy.isStopPhrase(text)"),
+                        body.index("VoicePolicy.isHallucination(text)"))
+
+    def test_no_path_needs_an_endpoint_to_have_fired(self) -> None:
+        # Both ways an utterance reaches the host call the same function — the pause/ceiling one
+        # and the manual one — and neither holds the stop test itself. A stop test inside `deliver`
+        # would be a stop test that only runs when the endpoint worked, which is the bug.
+        deliver = swift_body(CONTROLLER, "private func deliver(")
+        stopped = swift_body(CONTROLLER, "private func sendAfterStop(")
+        self.assertIn("transcribe(utterance, how: .turn)", deliver)
+        self.assertIn("transcribe(utterance, how: .sendOnly)", stopped)
+        for name in ("private func deliver(", "private func sendAfterStop("):
+            self.assertNotIn("isStopPhrase", swift_body(CONTROLLER, name))
+        # One shared transcription, so one stop test, in the one place every path arrives.
+        self.assertEqual(CONTROLLER.count("VoicePolicy.isStopPhrase(text)"), 1)
+        # The pause and the ceiling both leave the capture as the one `.utterance` event; the
+        # manual path hands the utterance back to the caller instead, because there is no loop left
+        # to receive an event — and both arrive at the same transcription.
+        self.assertEqual(AUDIO.count(".utterance(VoiceUtterance("), 2)
+        self.assertIn("return VoiceUtterance(", AUDIO)
 
 
 if __name__ == "__main__":

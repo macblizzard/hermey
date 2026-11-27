@@ -120,8 +120,8 @@ final class VoiceVADTests: XCTestCase {
         // 600 ms of silence ends it: 20 blocks at 30 ms.
         let quietNeeded = config.endpointSilenceBlocks
         let decisions = self.gate(&gate, rms: 120, blocks: quietNeeded)
-        XCTAssertEqual(decisions.last, .ended(keep: true))
-        XCTAssertEqual(decisions.dropLast().filter { $0 == .ended(keep: true) }.count, 0)
+        XCTAssertEqual(decisions.last, .ended(keep: true, reason: .silence))
+        XCTAssertEqual(decisions.dropLast().filter { $0 == .ended(keep: true, reason: .silence) }.count, 0)
     }
 
     func testACoughIsNotATurn() {
@@ -129,7 +129,7 @@ final class VoiceVADTests: XCTestCase {
         // 150 ms above the trigger — a cough, a door, a keyboard — then silence.
         _ = self.gate(&gate, rms: 4_000, blocks: 5)
         let decisions = self.gate(&gate, rms: 80, blocks: config.endpointSilenceBlocks)
-        XCTAssertEqual(decisions.last, .ended(keep: false))
+        XCTAssertEqual(decisions.last, .ended(keep: false, reason: .silence))
     }
 
     func testASpeakerNeverOpensTheMicrophone() {
@@ -212,98 +212,154 @@ final class VoiceVADTests: XCTestCase {
                        accuracy: 0.001)
 
         // The listening phase separates the two measurements: the trigger keeps following the
-        // detector's floor (the half that already worked at 120), while the boundary follows the
-        // room's own blocks (8 → 60). This is the 0.1.691 stream.
+        // detector's floor (the half that already worked at 120), while the boundary is no longer
+        // read from a room at all — it is the utterance's own (`endpointFollowsSpeech`).
         let uncalibrated = config.tunedForQuietInput()
             .listeningLevels(triggerFloor: 8, roomFloor: 28)
         XCTAssertEqual(uncalibrated.trigger, 120, accuracy: 0.001)
         XCTAssertEqual(uncalibrated.silence, 60, accuracy: 0.001)
+        XCTAssertTrue(config.tunedForQuietInput().endpointFollowsSpeech)
+        XCTAssertFalse(config.endpointFollowsSpeech, "the Mac must keep the floor-derived boundary")
     }
 
-    /// The defect the 0.1.691 log exposed: the boundary must sit between the room and the speech.
+    /// The defect the 0.1.692 log exposed: a boundary derived from a "floor" that was really speech.
     ///
-    /// This is the guard that fails if the old derivation comes back — a boundary equal to the
-    /// floor (or below it) can never be met by the room that floor was measured in.
-    func testTheEndpointBoundarySitsBetweenTheRoomAndSpeech() {
+    /// `floor × 1.5` over a floor of 102 is 154, and his voice reads 130 — a boundary above the voice
+    /// it is supposed to end. These are the two guards for the replacement.
+    func testTheEndpointBoundaryIsAlwaysBelowTheVoiceThatProducedIt() {
         let phone = config.tunedForQuietInput()
-        let speech = 130.0  // `vad: speech started, rms 130` in the owner's log.
-        for floor in stride(from: 8.0, through: 80.0, by: 1.0) {
-            let silence = phone.listeningLevels(floor: floor).silence
-            XCTAssertGreaterThan(silence, floor,
-                                 "at floor \(floor) the boundary collapsed onto the room")
-            XCTAssertLessThan(silence, speech,
-                              "at floor \(floor) the boundary rose into the speech it must accept")
+        // Every voiced level a trigger of 120 or more can admit, times every fraction of it.
+        for voiced in stride(from: 120.0, through: 8_000.0, by: 10.0) {
+            let silence = phone.endpointSilence(voicedAverage: voiced, floor: 102)
+            XCTAssertLessThan(silence, voiced,
+                              "at voiced \(voiced) the boundary rose into the speech")
             XCTAssertLessThanOrEqual(silence, config.silenceRMS,
                                      "the boundary must never exceed the old silenceRMS")
+            XCTAssertGreaterThanOrEqual(silence, config.endpointSilenceMinimum)
         }
+        // And the arithmetic is the named constants, not a magic number.
+        XCTAssertEqual(phone.endpointSilence(voicedAverage: 200, floor: 102), 90, accuracy: 0.001)
+        XCTAssertEqual(phone.endpointSilence(voicedAverage: 130, floor: 102), 60, accuracy: 0.001,
+                       "0.45 × 130 is under the 60 floor on a quiet input")
+        // The Mac keeps the floor-derived boundary exactly: 4000 of speech still ends at 200.
+        XCTAssertEqual(config.endpointSilence(voicedAverage: 4_000, floor: 200),
+                       config.silenceRMS, accuracy: 0.001)
     }
 
-    /// No quiet moment before speech means no calibrated floor; the first blocks are the floor.
-    func testTheFloorIsReadFromTheFirstBlocksWhenNoCalibrationRan() {
-        let phone = config.tunedForQuietInput()
-        // The five `vad: block` lines from the owner's log, in order.
-        let firstBlocks = [5.0, 12.0, 15.0, 28.0, 21.0]
-        XCTAssertEqual(phone.floorFromAmbient(firstBlocks), 28, accuracy: 0.001,
-                       "the room is the 90th percentile of its own quiet blocks")
-        // 28 of room → the boundary is 60, not 8: above every ambient block, below the 130 speech.
-        let levels = phone.listeningLevels(floor: phone.floorFromAmbient(firstBlocks))
-        XCTAssertEqual(levels.silence, 60, accuracy: 0.001)
-        XCTAssertGreaterThan(levels.silence, firstBlocks.max()!)
+    /// The floor is tracked from the quiet side only — the guard that fails if a voiced block can
+    /// ever raise it.
+    func testTheFloorCannotRiseFromAVoicedBlock() {
+        var tracker = VoiceFloorTracker(config: config.tunedForQuietInput())
+        tracker.feed(rms: 25, trigger: 120)
+        let room = tracker.level
+        XCTAssertLessThan(room, 30, "the first quiet block is the room")
 
-        // Nothing heard at all: the configured minimum, and still a boundary above the phone's
-        // own floor rather than the constant 8 that started this bug.
-        XCTAssertEqual(phone.floorFromAmbient([]), phone.measuredFloorMinimum, accuracy: 0.001)
-        XCTAssertEqual(phone.listeningLevels(floor: phone.floorFromAmbient([])).silence, 60,
-                       accuracy: 0.001)
+        // The owner's own three voiced blocks. None of them may move the floor at all.
+        for rms in [130.0, 173.0, 174.0] {
+            tracker.feed(rms: rms, trigger: 120)
+            XCTAssertEqual(tracker.level, room, accuracy: 0.0001,
+                           "a voiced block at \(rms) raised the floor")
+        }
+        // A quiet block above the floor raises it slowly: a fraction of the gap, not the gap.
+        tracker.feed(rms: 60, trigger: 120)
+        XCTAssertEqual(tracker.level, room + (60 - room) * config.floorRiseFraction,
+                       accuracy: 0.0001)
+        // A quiet block below it drops it most of the way at once: the room got quieter, follow it
+        // before the next sentence is judged against the old room.
+        let louder = tracker.level
+        tracker.feed(rms: 8, trigger: 120)
+        XCTAssertEqual(tracker.level, louder + (8 - louder) * config.floorFallFraction,
+                       accuracy: 0.0001)
+        XCTAssertLessThan(tracker.level, louder)
     }
 
-    /// The whole sentence, block for block, with the owner's numbers: ambient, speech, pause.
-    func testTheOwnersRoomEndsTheUtterance() {
+    /// The whole sentence, block for block, with the owner's second log: `block 1 rms 25`,
+    /// `block 2 rms 102`, `block 3 rms 130`, `block 4 rms 173`, `block 5 rms 174`, then a pause.
+    func testTheOwnersSecondLogEndsTheUtterance() {
         let phone = config.tunedForQuietInput()
-        let floor = phone.floorFromAmbient([5, 12, 15, 28, 21])
-        let levels = phone.listeningLevels(floor: floor)
+        let trigger = phone.listeningLevels(floor: phone.measuredFloorMinimum).trigger
         var gate = VoiceUtteranceGate(config: phone)
 
-        // He is in the room, not talking yet. The old boundary (8) treated every one of these as
-        // silence; this one accepts them as the room.
-        for rms in [5.0, 12.0, 15.0, 28.0, 21.0] {
-            XCTAssertEqual(gate.feed(rms: rms, trigger: levels.trigger, silence: levels.silence),
-                           .idle)
+        XCTAssertEqual(trigger, 120, accuracy: 0.001, "the trigger that fired is unchanged")
+        XCTAssertEqual(gate.feed(rms: 25, trigger: trigger), .idle, "room tone starts nothing")
+        // 102 is under the trigger: it is loud room, not speech, and it may not become the floor.
+        XCTAssertEqual(gate.feed(rms: 102, trigger: trigger), .idle)
+        XCTAssertLessThan(gate.floorLevel, 30,
+                          "the block that was mistaken for the room (102) is the bug")
+        XCTAssertEqual(gate.feed(rms: 130, trigger: trigger), .started,
+                       "this is the block the 0.1.692 log tripped on")
+
+        for rms in [173.0, 174.0] {
+            XCTAssertEqual(gate.feed(rms: rms, trigger: trigger), .idle)
+            // The boundary is always strictly below the speech heard so far.
+            XCTAssertLessThan(gate.endpointLevel, gate.voicedAverage)
+            XCTAssertLessThan(gate.endpointLevel, 130, "his quiet speech must clear the boundary")
         }
-        // He speaks, at the level in his log.
-        XCTAssertEqual(gate.feed(rms: 130, trigger: levels.trigger, silence: levels.silence),
-                       .started)
-        for _ in 0..<(config.minimumUtteranceBlocks - 1) {
-            _ = gate.feed(rms: 130, trigger: levels.trigger, silence: levels.silence)
+        // …and however loud the sentence gets, it never rises past the old silenceRMS.
+        for _ in 0..<40 {
+            _ = gate.feed(rms: 2_600, trigger: trigger)
         }
-        // He stops, and the room's own 20 RMS is now below the boundary — so 600 ms of it ends the
-        // sentence. Against the old boundary of 8 this loop made no progress at all.
+        XCTAssertLessThanOrEqual(gate.endpointLevel, phone.silenceRMS)
+        XCTAssertEqual(gate.feed(rms: 25, trigger: trigger), .idle, "the pause begins")
+
+        // He stops talking. 600 ms of his own room is below a boundary of ~200 at worst, and ends
+        // the sentence — the thing that never happened on that phone.
         var decision: VoiceUtteranceGate.Decision?
-        for _ in 0..<config.endpointSilenceBlocks {
-            decision = gate.feed(rms: 20, trigger: levels.trigger, silence: levels.silence)
+        for _ in 0..<(phone.endpointSilenceBlocks - 1) {
+            decision = gate.feed(rms: 25, trigger: trigger)
         }
-        XCTAssertEqual(decision, .ended(keep: true))
+        XCTAssertEqual(decision, .ended(keep: true, reason: .silence))
     }
 
+    /// The same replay with his *quiet* voice, which is the case the old derivation actually broke:
+    /// 130 RMS of speech against a 154 boundary.
+    func testTheOwnersQuietVoiceEndsTheUtteranceToo() {
+        let phone = config.tunedForQuietInput()
+        var gate = VoiceUtteranceGate(config: phone)
+        XCTAssertEqual(gate.feed(rms: 28, trigger: 120), .idle)
+        XCTAssertEqual(gate.feed(rms: 130, trigger: 120), .started)
+        for _ in 0..<20 { _ = gate.feed(rms: 130, trigger: 120) }
+        XCTAssertLessThan(gate.endpointLevel, 130)
+        var decision: VoiceUtteranceGate.Decision?
+        for _ in 0..<phone.endpointSilenceBlocks {
+            decision = gate.feed(rms: 28, trigger: 120)
+        }
+        XCTAssertEqual(decision, .ended(keep: true, reason: .silence))
+    }
+
+    /// An utterance that never goes quiet ends itself at the ceiling and is delivered anyway.
+    func testTheCeilingEndsARunawayUtterance() {
+        var gate = VoiceUtteranceGate(config: config.tunedForQuietInput())
+        XCTAssertEqual(gate.feed(rms: 1_200, trigger: 120), .started)
+        var decisions: [VoiceUtteranceGate.Decision] = []
+        for _ in 0..<(config.maximumUtteranceBlocks - 2) {
+            decisions.append(gate.feed(rms: 1_200, trigger: 120))
+        }
+        XCTAssertFalse(decisions.contains(.ended(keep: true, reason: .ceiling)),
+                       "the ceiling fired early")
+        XCTAssertEqual(gate.feed(rms: 1_200, trigger: 120),
+                       .ended(keep: true, reason: .ceiling))
+        XCTAssertEqual(config.maximumUtteranceBlocks, 667, "20 s of 30 ms blocks")
+    }
+
+    /// A continuously loud room does not become the speech it is drowning: the gate still starts on
+    /// the trigger, and the boundary stays under what it heard.
     func testAQuietStreamCanBecomeATurn() {
         // The old fixed trigger: a stream that peaks at 300 RMS could never start an utterance.
         var desktopGate = VoiceUtteranceGate()
         XCTAssertEqual(desktopGate.feed(rms: 300, trigger: 600), .idle)
 
-        var gate = VoiceUtteranceGate()
-        let levels = config.tunedForQuietInput().listeningLevels(floor: 20)
-        XCTAssertEqual(gate.feed(rms: 300, trigger: levels.trigger, silence: levels.silence),
-                       .started)
+        var gate = VoiceUtteranceGate(config: config.tunedForQuietInput())
+        XCTAssertEqual(gate.feed(rms: 300, trigger: 120), .started)
         for _ in 0..<(config.minimumUtteranceBlocks - 1) {
-            _ = gate.feed(rms: 300, trigger: levels.trigger, silence: levels.silence)
+            _ = gate.feed(rms: 300, trigger: 120)
         }
-        // The boundary sits above the room but below speech, so 0.6 s of the room ends the
-        // sentence rather than every single block counting as silence and cutting him off.
+        XCTAssertLessThan(gate.endpointLevel, 300)
         var decision: VoiceUtteranceGate.Decision?
         for _ in 0..<config.endpointSilenceBlocks {
-            decision = gate.feed(rms: 10, trigger: levels.trigger, silence: levels.silence)
+            decision = gate.feed(rms: 10, trigger: 120)
         }
-        XCTAssertEqual(decision, .ended(keep: true))
+        XCTAssertEqual(decision, .ended(keep: true, reason: .silence))
     }
 }
 
