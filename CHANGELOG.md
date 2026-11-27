@@ -7,6 +7,27 @@ Each release's section may carry both its release notes and the per-change entri
 recorded as the work landed; entries before 0.1.610 were given their version headings
 from the repository's history and the published release pages.
 
+## [0.1.696] — 2026-11-27
+
+### Security
+- **A tag name can no longer run code in CI.** Every workflow that put a `github.*`, `inputs.*`, `steps.*`,
+  `env.*` or `secrets.*` value inside a `run:` script now passes it through `env:` and quotes it; a workflow test
+  fails the build if one comes back. The release job had `contents: write`.
+- **Plaintext sockets are refused off the loopback.** Pairing used to test `URLComponents.host` against
+  `"[::1]"`, which never matches, and a decoded pairing address could carry `ws://` into the API, socket and
+  local-computer URLs. One loopback predicate now decides, a remote address is upgraded to `wss://`, and the
+  fallback that would have re-emitted the plaintext URL is gone.
+- **The insecure-TLS escape hatch is explicit and loud.** `--insecure` prints a warning when parsed, nothing
+  retries it on error, and `fetch` refuses anything that is not http(s).
+- **Reasoned allowlists** so the next audit is signal rather than noise: gitleaks for Sparkle's *public* key and a
+  UserDefaults key name, osv for the unmaintained-only `unsafe-libyaml`, semgrep for git blob SHA-1 and test
+  `eval`, bandit by path for the test harness. Re-sweep: zero unsuppressed high/critical.
+- **Dependencies**: `url` 2.5.9 (stack overflow on nested `blob:` URLs), `rusqlite` 0.43 with
+  `libsqlite3-sys` 0.40 and a current SQLite (CVE in the bundled copy), `serde_yaml` → `serde_yaml_ng`.
+
+### Changed
+- **`hermeyd` 0.8.27** — carries the SQLite and URL fixes; deploy this one with the app.
+
 ## [0.1.695] — 2026-11-27
 
 ### Added

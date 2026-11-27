@@ -176,8 +176,8 @@ class TheRouteIsInTheVersionStream(unittest.TestCase):
         self.assertIsNotNone(version)
         assert version is not None
         minor, patch = int(version.group(2)), int(version.group(3))
-        self.assertEqual((minor, patch), (8, 26),
-                         "the reference route is a new host capability: one patch above 0.8.25")
+        self.assertGreaterEqual((minor, patch), (8, 26),
+                                "the reference route is a new host capability: 0.8.26 or later")
 
 
 class TheClientAsksTheRoute(unittest.TestCase):
