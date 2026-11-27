@@ -81,6 +81,11 @@ class TaskChecklistStrip(unittest.TestCase):
         self.assertIn("visibleRowLimit = 8", VIEW)
         self.assertIn("ScrollView(.vertical", VIEW)
 
+    def test_the_list_never_takes_more_height_than_its_rows(self) -> None:
+        """A ScrollView with no ceiling eats the whole pane — a two-row board once filled the phone."""
+        self.assertNotIn("maxHeight: .infinity", VIEW)
+        self.assertIn("min(rows.count, Self.visibleRowLimit)) * Self.rowHeight", VIEW)
+
     def test_no_board_draws_nothing(self) -> None:
         for shell, name in ((MOBILE, "mobile"), (MAC, "mac")):
             self.assertIn("if let board = model.taskBoard {", shell, name)

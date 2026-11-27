@@ -118,7 +118,6 @@ public struct TaskChecklistView: View {
 
     private var taskList: some View {
         let rows = board.rows
-        let capped = rows.count > Self.visibleRowLimit
         return ScrollView(.vertical, showsIndicators: false) {
             VStack(alignment: .leading, spacing: 0) {
                 ForEach(rows) { row in
@@ -128,9 +127,10 @@ public struct TaskChecklistView: View {
             .padding(.vertical, 5)
             .padding(.horizontal, 8)
         }
-        .frame(maxHeight: capped
-               ? CGFloat(Self.visibleRowLimit) * Self.rowHeight + 10
-               : .infinity)
+        // Cap to the rows actually drawn — never `.infinity`. A ScrollView given no height ceiling
+        // takes every point the pane offers, which is how an expanded strip swallowed the whole
+        // phone screen for a two-row board.
+        .frame(maxHeight: CGFloat(min(rows.count, Self.visibleRowLimit)) * Self.rowHeight + 10)
         .scrollBounceBehavior(.basedOnSize)
     }
 
