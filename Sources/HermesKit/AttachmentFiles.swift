@@ -105,29 +105,31 @@ public enum AttachmentLocation: Hashable, Sendable {
 
     /// The name the bytes sit under in the attachment cache.
     ///
-    /// An uploaded file keeps the host's own name, because that is the handle the transcript quotes
-    /// back and the cache was already keyed that way for pictures. A workspace file is keyed by a
-    /// fingerprint of its path *plus* its extension: two folders may legally hold `report.xlsx`, and
-    /// Quick Look picks a viewer from the suffix. A reference is keyed the same way, and for one
-    /// more reason: the same *name* may exist in two profiles, and a fingerprint of the reference
-    /// keeps the two apart.
+    /// A fingerprint of **profile + file**, never the bare name: two profiles may legally hold
+    /// `notes.pdf`, and they are different files, so one cache entry must never answer for the
+    /// other (`AttachmentReferenceReader` and the upload path both write with this key, so a send
+    /// and the transcript row that later quotes it always agree). The fingerprint also keeps a
+    /// re-attached file from serving the previous send's bytes when the host re-used the name. The
+    /// extension survives the fingerprint, because Quick Look and the share sheet pick a viewer
+    /// from the suffix.
     public var cacheKey: String {
         switch self {
-        case let .uploaded(_, name):
-            return (name as NSString).lastPathComponent
-        case let .workspaceFile(_, path):
-            return Self.fingerprinted(path, prefix: "workspace")
-        case let .reference(_, path):
-            return Self.fingerprinted(path, prefix: "ref")
+        case let .uploaded(profile, name):
+            return Self.fingerprinted(profile, name, prefix: "upload")
+        case let .workspaceFile(profile, path):
+            return Self.fingerprinted(profile, path, prefix: "workspace")
+        case let .reference(profile, path):
+            return Self.fingerprinted(profile, path, prefix: "ref")
         }
     }
 
-    /// `prefix-<fnv>.<ext>`, so the key is stable across launches and keeps the suffix a viewer
-    /// needs.
-    private static func fingerprinted(_ path: String, prefix: String) -> String {
-        let name = (path as NSString).lastPathComponent
+    /// `prefix-<fnv(profile ∥ file)>.<ext>`, so the key is stable across launches and keeps the
+    /// suffix a viewer needs. `\u{0}` separates the two parts because a profile is one path
+    /// component (the host refuses everything else) and can therefore never contain one.
+    private static func fingerprinted(_ profile: String, _ file: String, prefix: String) -> String {
+        let name = (file as NSString).lastPathComponent
         let suffix = (name as NSString).pathExtension.lowercased()
-        let stem = "\(prefix)-\(fingerprint(path))"
+        let stem = "\(prefix)-\(fingerprint("\(profile)\u{0}\(file)"))"
         return suffix.isEmpty ? stem : "\(stem).\(suffix)"
     }
 

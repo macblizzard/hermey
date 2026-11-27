@@ -210,21 +210,55 @@ class TheCacheIsKeyedByTheReference(unittest.TestCase):
 
     def test_the_disk_half_is_the_cache_that_already_existed(self) -> None:
         source = code(read(ATTACHMENTS))
-        self.assertIn("AttachmentImageStore.data(named: attachment.name)", source)
-        self.assertIn("AttachmentImageStore.save(data, as: attachment.name)", source)
+        self.assertIn("AttachmentImageStore.data(named: key)", source)
+        self.assertIn("AttachmentImageStore.save(data, as: key)", source)
         self.assertIn("private static let keep = 240", code(read(STORE)))
+
+    def test_every_cache_key_is_the_reference_for_its_profile(self) -> None:
+        # The 2026-11 audit: the caches were keyed by the bare file *name*, so profile A's
+        # `notes.pdf` answered profile B's reference, and a re-attach with the same name served the
+        # previous send's bytes. Reader, upload path and the two body passes all key by
+        # `AttachmentLocation.cacheKey` — a fingerprint of profile + reference — through
+        # `MessageAttachment.cacheKey(profile:)`.
+        source = code(read(ATTACHMENTS))
+        self.assertIn("public func cacheKey(profile: String) -> String", source)
+        self.assertIn("AttachmentLocation.reference(profile: profile, path: path).cacheKey", source)
+        reader = source[source.index("public enum AttachmentReferenceReader"):]
+        self.assertIn("let key = attachment.cacheKey(profile: profile)", reader)
+        files = code(read(FILES))
+        # All three locations fingerprint profile + file; the uploaded branch goes through the
+        # same key as the reference one, not a bare name.
+        self.assertIn('Self.fingerprinted(profile, name, prefix: "upload")', files)
+        self.assertIn('Self.fingerprinted(profile, path, prefix: "ref")', files)
+        self.assertIn('fingerprint("\\(profile)\\u{0}\\(file)")', files)
+        cache_key = files[files.index("public var cacheKey: String"):]
+        cache_key = cache_key[:cache_key.index("private static func fingerprinted")]
+        self.assertNotIn("lastPathComponent", cache_key,
+                         "the cache key is a fingerprint, never the bare name")
+
+    def test_the_send_writes_the_key_the_reader_looks_up(self) -> None:
+        # The send path writes under the receipt's own path (what the row will quote as
+        # `@image:<path>`) inside the profile that was messaged — so a relaunched device renders
+        # what it sent with no host round trip, and never with another profile's bytes.
+        source = code(read(ROOT / "Sources" / "HermesAppKit" / "AppModel.swift"))
+        self.assertIn("AttachmentImageStore.save(attachment.data, as: cacheLocation.cacheKey)", source)
+        self.assertIn("AttachmentLocation.reference(profile: sendProfile, path: $0)", source)
+        self.assertIn("AttachmentLocation.uploaded(profile: sendProfile, name: attachment.name)", source)
 
     def test_the_body_pass_reads_memory_and_nothing_else(self) -> None:
         # `cachedBytes` runs inside the renderer's body. The disk (and the host) are the reader's
-        # job, off the main actor; a body pass that read a file is the freeze of 2026-11-25.
-        for shell in (MAC_ROW, MOBILE_ROW):
-            self.assertIn("cachedBytes: { reference in AttachmentByteCache.data(for: reference.id) }",
-                          code(read(shell)))
+        # job, off the main actor; a body pass that read a file is the freeze of 2026-11-25. The
+        # read is still memory-only — now keyed the same way the reader stores.
+        for shell, profile in ((MAC_ROW, "bot"), (MOBILE_ROW, "attachmentProfile")):
+            body = code(read(shell))
+            self.assertIn("cachedBytes: { reference in", body)
+            self.assertIn(f"AttachmentByteCache.data(for: reference.cacheKey(profile: {profile}))", body)
+            self.assertNotIn("AttachmentImageStore", body)
 
     def test_a_cached_reference_never_asks_the_host(self) -> None:
         source = code(read(ATTACHMENTS))
         reader = source[source.index("public enum AttachmentReferenceReader"):]
-        cache = reader.index("AttachmentByteCache.data(for: attachment.id)")
+        cache = reader.index("AttachmentByteCache.data(for: key)")
         fetch = reader.index("try await fetch(")
         self.assertLess(cache, fetch, "the memory cache is read before the request is built")
 
@@ -300,9 +334,10 @@ class FailureIsVisible(unittest.TestCase):
 
 class TheRestOfTheMessageIsUntouched(unittest.TestCase):
     def test_the_composer_still_sends_the_reference_it_always_did(self) -> None:
+        # The send still appends the host's reference to the prompt; only the *cache write* changed
+        # (pinned by `TheCacheIsKeyedByTheReference.test_the_send_writes_the_key_the_reader_looks_up`).
         source = code(read(ROOT / "Sources" / "HermesAppKit" / "AppModel.swift"))
-        self.assertIn("AttachmentImageStore.save(attachment.data, as: receipt.path ?? attachment.name)",
-                      source)
+        self.assertIn("if let ref = receipt.refText { refs.append(ref) }", source)
 
     def test_the_upload_path_did_not_grow_a_second_parse(self) -> None:
         # The send path writes the reference; the reader is the only thing that reads it.

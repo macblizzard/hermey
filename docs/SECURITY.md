@@ -234,7 +234,7 @@ the same reasoning written next to it.
 |---|---|---|
 | `GET /v1/health` | liveness for the installer and `hermeyd --gateway-check` | returns `{status, protocol_version, ws}` only — no device count, no version of anything else |
 | `POST /v1/pair/start` | the host mints the code | **direct loopback only**: any `Forwarded` / `X-Forwarded-For` / `X-Real-IP` / `Tailscale-User-Login` header means it arrived through `tailscale serve` and is refused `403` |
-| `POST /v1/pair/claim` | the phone redeems the code it was shown | a live 6-digit code (single use, 600 s), 30 attempts/min/source |
+| `POST /v1/pair/claim` | the phone redeems the code it was shown (over `tailscale serve`, so it is *not* proxy-refused) | a live 6-digit code (single use, 600 s), 30 attempts/min/source — and a code only exists if the host minted one (`pair/start` is direct-loopback-only), so a proxied claim cannot manufacture a pairing |
 | `POST /v1/token` | trades a refresh token for a ticket | a SHA-256 match against `device_id` + token; refused for a revoked device |
 | `GET /v1/push/icon/{profile}.png` | Bark fetches the image itself and holds no credential | only a bot's *face* and whether that bot exists; the profile name is `^[a-z0-9][a-z0-9_-]{0,63}$` |
 | `WS /v1/display/ws` | noVNC cannot set a header on its socket | accepts, *then* redeems a single-use 60 s display ticket and re-checks the device; a bad ticket closes `4401` |

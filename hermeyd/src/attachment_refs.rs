@@ -14,7 +14,16 @@
 //!     served, so `@file:…/profiles/cody/state.db` is not a file this route knows about;
 //!   * a `..` segment is refused before the filesystem is touched, and `.` / a hidden name with it;
 //!   * when the reference names a profile (`…/profiles/<p>/…`) that profile must be the requested
-//!     one — a device paired to `cody` cannot read `jason`'s uploads by pasting its path;
+//!     one — the route cannot be re-targeted from one profile onto another after the fact. This is
+//!     *consistency inside one request*, not device scoping: see the next rule;
+//!   * **a paired device is not bound to a profile.** Devices pair host-wide (`pairing.rs` records
+//!     no profile) and the apps legitimately show several profiles' conversations on one device, so
+//!     a paired device may read *any* profile's `images/`/`attachments/` — including the
+//!     host-level `<engine_home>/images|attachments` candidates `parity_gaps.rs` keeps. That is the
+//!     chosen rule (2026-11 audit): binding a device token to a profile would invalidate every
+//!     pairing and break the cross-profile transcript views. What bounds the route is instead the
+//!     pair above — a device bearer plus a reference that cannot leave the two folders of one
+//!     profile. The rule is pinned by `a_paired_device_reads_any_profile_it_has_a_row_for`;
 //!   * the file that is finally opened is the one inside `<engine_home>/profiles/<profile>/<folder>`
 //!     with the reference's last component as its name: the reference is a *pointer*, and the path
 //!     is rebuilt from parts this module validated, never from the string that arrived;
@@ -658,6 +667,39 @@ mod tests {
         let error = fetch(&st, Some("cody"), Some("@image:../../etc/passwd")).await.unwrap_err();
         assert_eq!(error.0, StatusCode::UNPROCESSABLE_ENTITY);
         assert!(error.1 .0["detail"].as_str().unwrap().contains("no traversal"));
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// The chosen scoping rule, pinned so a future change has to rewrite it on purpose (see the
+    /// module header): devices pair **host-wide**, so one paired device may read any profile's
+    /// attachment folders — the apps show several profiles' conversations on one device. The
+    /// boundary the route does enforce is per-request: a reference naming one profile cannot be
+    /// re-targeted at another, and nothing outside `images/`/`attachments/` is ever served.
+    #[tokio::test]
+    async fn a_paired_device_reads_any_profile_it_has_a_row_for() {
+        let dir = scratch("ref-cross-profile");
+        let st = Arc::new(test_state(&dir));
+        let profiles_root = st.engine_home.join("profiles");
+        std::fs::create_dir_all(profiles_root.join("cody").join("images")).unwrap();
+        std::fs::create_dir_all(profiles_root.join("jason").join("images")).unwrap();
+        std::fs::write(profiles_root.join("jason/images/upload_mine.png"), b"jason-bytes").unwrap();
+
+        // The same bearer that reads cody reads jason: one device, several profiles.
+        let response = fetch(&st, Some("jason"), Some("@image:images/upload_mine.png"))
+            .await
+            .expect("a paired device reads another profile's upload");
+        assert_eq!(body_bytes(response).await, b"jason-bytes".to_vec());
+
+        // The per-request rule that *is* enforced: a reference's own profile segment must be the
+        // requested one, so a cody row's path cannot be pasted as a jason request (and vice versa).
+        let cody_ref = "@image:/root/.hermes/profiles/cody/images/upload_x.png";
+        let error = fetch(&st, Some("jason"), Some(cody_ref)).await.unwrap_err();
+        assert_eq!(error.0, StatusCode::UNPROCESSABLE_ENTITY);
+
+        // And the folders themselves stay the boundary: outside them it is a refusal, whoever asks.
+        let error = fetch(&st, Some("jason"), Some("@file:../hermeyd/bridge.db")).await.unwrap_err();
+        assert_eq!(error.0, StatusCode::UNPROCESSABLE_ENTITY);
 
         let _ = std::fs::remove_dir_all(&dir);
     }

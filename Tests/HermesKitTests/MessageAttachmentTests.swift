@@ -158,7 +158,7 @@ final class MessageAttachmentTests: XCTestCase {
     func testTheDisplayedTextDropsTheBlockAndKeepsTheWords() {
         let row = TranscriptEntry(id: "1", role: .user, text: workbookMessage)
         XCTAssertEqual(row.displayText, "cipher bot is saying session not found")
-        XCTAssertEqual(row.referenceAttachments.map(\.name), ["MICs.xlsx"])
+        XCTAssertEqual(row.referenceAttachments(profile: "cody").map(\.name), ["MICs.xlsx"])
     }
 
     // MARK: The route

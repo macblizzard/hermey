@@ -323,7 +323,11 @@ struct TranscriptRowView: View {
                         // does the disk (and the host) off the main actor and fills that cache.
                         attachments: resolvedAttachments,
                         profile: bot,
-                        cachedBytes: { reference in AttachmentByteCache.data(for: reference.id) },
+                        // Same key the reader (and the upload path) store under: profile + reference,
+                        // never the bare name — two profiles may hold the same file name.
+                        cachedBytes: { reference in
+                            AttachmentByteCache.data(for: reference.cacheKey(profile: bot))
+                        },
                         load: loadReference,
                         onOpenImage: showPicture,
                         onOpenFile: showFile)

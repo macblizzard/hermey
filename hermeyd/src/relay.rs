@@ -265,6 +265,13 @@ struct Slot {
 #[derive(Clone)]
 pub struct Registry {
     inner: Arc<Mutex<HashMap<String, Vec<Slot>>>>,
+    /// Device ids whose sockets were asked to close for a revoke. It is what closes the
+    /// revoke/upgrade race: the upgrade path checks `store.device_active` *before* the socket
+    /// registers, so a revoke landing in between finds no slots to close and used to leave the
+    /// freshly registered socket talking forever. Now the revoke records the id here, and every
+    /// later registration for that id closes with 4403. A revoked id is never re-paired (a claim
+    /// mints a fresh id), so the set only ever grows by one entry per revoked device.
+    revoked: Arc<Mutex<HashSet<String>>>,
     host_frames: broadcast::Sender<String>,
 }
 
@@ -273,18 +280,20 @@ impl Default for Registry {
         // 256 frames of slack: reactions are rare and tiny, and a socket that falls this far behind
         // is not one whose backlog is worth keeping (`publish` never blocks on it).
         let (host_frames, _) = broadcast::channel(256);
-        Self { inner: Arc::default(), host_frames }
+        Self { inner: Arc::default(), revoked: Arc::default(), host_frames }
     }
 }
 
 static NEXT_SOCKET_ID: AtomicU64 = AtomicU64::new(1);
 static NEXT_ACTIVITY: AtomicU64 = AtomicU64::new(1);
 
-/// Why an upgrade was refused: no socket could be freed without emptying a device.
+/// Why an upgrade was refused: no socket could be freed without emptying a device, or the device
+/// was revoked between the upgrade's own standing check and this registration.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Refusal {
     PerDeviceCap,
     GlobalCap,
+    Revoked,
 }
 
 impl Refusal {
@@ -293,6 +302,16 @@ impl Refusal {
         match self {
             Refusal::PerDeviceCap => "too many open sockets for this device",
             Refusal::GlobalCap => "too many open sockets on this host",
+            Refusal::Revoked => "device revoked",
+        }
+    }
+
+    /// The close frame this refusal becomes when it surfaces after the upgrade has answered:
+    /// a revoke closes with 4403 (`proxy.py:63-65`), a cap with 4429.
+    pub fn close_code(self) -> u16 {
+        match self {
+            Refusal::PerDeviceCap | Refusal::GlobalCap => CLOSE_TOO_MANY_SOCKETS,
+            Refusal::Revoked => CLOSE_DEVICE_REVOKED,
         }
     }
 }
@@ -339,11 +358,18 @@ impl Registry {
 
     /// Track one socket, making room under the same lock. Returns the id `unregister` takes and the
     /// activity cell the relay bumps on every forwarded frame.
+    ///
+    /// A device whose revoke already ran is refused here rather than registered and torn down
+    /// later: the upgrade route checked `device_active` a moment earlier, and a revoke in that
+    /// window used to find an empty registry (nothing to close) and leave this socket open.
     pub fn register_capped(
         &self,
         device_id: &str,
         tx: mpsc::Sender<Control>,
     ) -> Result<(u64, Arc<AtomicU64>), Refusal> {
+        if lock(&self.revoked).contains(device_id) {
+            return Err(Refusal::Revoked);
+        }
         let mut inner = lock(&self.inner);
         make_room(&mut inner, device_id)?;
         let id = NEXT_SOCKET_ID.fetch_add(1, Ordering::Relaxed);
@@ -375,6 +401,9 @@ impl Registry {
     /// must not wait on a socket. Slots are dropped immediately so a second revoke cannot count the
     /// same socket twice; the relay's own `unregister` is then a no-op.
     pub fn close_device(&self, device_id: &str) -> usize {
+        // Remember the revoke even when no slot was open: the very socket that is dialling right
+        // now registers a moment later, and it must not slip past this (`register_capped`).
+        lock(&self.revoked).insert(device_id.to_string());
         let mut inner = lock(&self.inner);
         let Some(slots) = inner.remove(device_id) else {
             return 0;
@@ -531,6 +560,19 @@ fn evict_globally(inner: &mut HashMap<String, Vec<Slot>>) -> bool {
         short_id(&device)
     );
     true
+}
+
+/// Replace the engine's per-boot token with `[redacted]` in a string that may carry the dial URI.
+///
+/// `engine_url` puts the token in the query string, and a dial failure's own text can name the URI
+/// it was dialling — so an error written to stderr straight into journald would carry full engine
+/// control for the rest of the boot (`bot_message::deliver_live` refuses to log that text at all
+/// for the same reason). The base WS address has no token in it, so the line keeps its hostname.
+pub(crate) fn scrub_dial(text: &str, token: Option<&str>) -> String {
+    match token.filter(|t| !t.is_empty()) {
+        Some(token) => text.replace(token, "[redacted]"),
+        None => text.to_string(),
+    }
 }
 
 /// First eight characters of a device id, for logs: enough to correlate, not enough to replay.
@@ -1985,7 +2027,8 @@ pub async fn relay_guarded(
                 activity,
             }),
             Err(refusal) => {
-                // The one case an upgrade is refused: no older socket could be closed for it.
+                // Caps close 4429; a device the revoke caught between the upgrade's standing
+                // check and this registration closes 4403 (`Refusal::close_code`).
                 eprintln!(
                     "relay: refusing a socket for device {}: {}",
                     short_id(device),
@@ -1993,7 +2036,7 @@ pub async fn relay_guarded(
                 );
                 let _ = socket
                     .send(AxMsg::Close(Some(CloseFrame {
-                        code: CLOSE_TOO_MANY_SOCKETS,
+                        code: refusal.close_code(),
                         reason: refusal.detail().into(),
                     })))
                     .await;
@@ -2039,12 +2082,17 @@ pub async fn relay_guarded(
                     // that will never splice again is worse than a clean close it can retry.
                     let backoff = AUTORESUME_BACKOFF_MS << (dial_attempts - 1);
                     eprintln!(
-                        "relay: autoresume dial {dial_attempts}/{AUTORESUME_ATTEMPTS} failed: {err}; retrying in {backoff} ms"
+                        "relay: autoresume dial {dial_attempts}/{AUTORESUME_ATTEMPTS} failed: {}; retrying in {backoff} ms",
+                        scrub_dial(&err.to_string(), engine_token.as_deref())
                     );
                     tokio::time::sleep(Duration::from_millis(backoff)).await;
                     continue 'splice;
                 }
-                eprintln!("relay: engine unreachable at {url}: {err}");
+                eprintln!(
+                    "relay: engine unreachable at {}: {}",
+                    engine_url,
+                    scrub_dial(&err.to_string(), engine_token.as_deref())
+                );
                 let reason = if replay.is_some() {
                     "autoresume failed"
                 } else {
@@ -3863,6 +3911,76 @@ mod tests {
 
         server.abort();
         engine.abort();
+    }
+
+    /// The revoke/upgrade race the audit found: the upgrade checks `device_active`, the revoke
+    /// lands *before* the socket registers (so `close_device` finds no slots and closes nothing),
+    /// and the newcomer used to register into a revoked device and talk forever. `close_device`
+    /// now records the id even with no slots, and `register_capped` refuses it with 4403.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn a_socket_that_registers_after_its_revoke_closes_4403() {
+        let registry = Registry::default();
+        // The revoke ran first: no live sockets, so the close count is zero — and nothing else
+        // must come of a revoke that found an idle registry.
+        assert_eq!(registry.close_device("device-a"), 0);
+
+        // No engine needed: the refusal happens at registration, before the dial matters.
+        let (addr, server) = serve_relay(
+            // nosemgrep: javascript.lang.security.detect-insecure-websocket.detect-insecure-websocket
+            "ws://127.0.0.1:1".to_string(),
+            Some("device-a".to_string()),
+            registry.clone(),
+            Limits::default(),
+        )
+        .await;
+
+        // nosemgrep: javascript.lang.security.detect-insecure-websocket.detect-insecure-websocket
+        let (mut client, _) = tokio_tungstenite::connect_async(format!("ws://{addr}/ws"))
+            .await
+            .unwrap();
+        assert_eq!(
+            next_close(&mut client).await,
+            CLOSE_DEVICE_REVOKED,
+            "a socket the revoke raced must close 4403, not splice"
+        );
+        assert_eq!(registry.count("device-a"), 0, "no slot was left registered");
+
+        // Another device is untouched by the revoke that raced.
+        assert_eq!(registry.publish("noise".to_string()), 0, "no subscribers: nothing was sent");
+        assert_eq!(registry.count("device-b"), 0);
+
+        server.abort();
+    }
+
+    /// The unreachable-engine line is the one place the dial URI could land in stderr, and the
+    /// dial URI carries the engine's per-boot token — full engine control for the rest of the
+    /// boot (`bot_message.rs` refuses to log the same text for exactly this reason).
+    #[test]
+    fn the_engine_down_line_never_carries_the_engine_token() {
+        let token = "per-boot-token-9f2c";
+        let url = crate::engine_client::engine_url("ws://127.0.0.1:9121/api/ws", Some(token));
+
+        // A dial error that names the URI it was dialling — tungstenite does this for URL errors.
+        let err = format!("InvalidUrl: {url}");
+        let line = format!(
+            "relay: engine unreachable at {}: {}",
+            "ws://127.0.0.1:9121/api/ws",
+            scrub_dial(&err, Some(token))
+        );
+        assert!(
+            !line.contains(token),
+            "the token must never reach stderr: {line}"
+        );
+        assert!(line.contains("[redacted]"), "the redaction is visible: {line}");
+        assert!(
+            line.contains("ws://127.0.0.1:9121/api/ws"),
+            "the base address keeps its hostname: {line}"
+        );
+
+        // No token to scrub: the text passes through unchanged.
+        assert_eq!(scrub_dial("plain io error", None), "plain io error");
+        // An empty token (the engine said it wants none) is not a scrub target either.
+        assert_eq!(scrub_dial("plain io error", Some("")), "plain io error");
     }
 
     /// `test_revoked_device_cannot_open_a_socket`'s open-socket half: revocation closes the

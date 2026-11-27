@@ -15,7 +15,11 @@
 //! the client they use; everything here is only about files this host owns.
 //!
 //! House rules, all of them borrowed from the neighbouring modules on purpose:
-//!   * device auth through `require_device` — an image is not public because its name is random;
+//!   * device auth through `require_device` — an image is not public because its name is random.
+//!     Devices pair **host-wide**, not per profile, so any paired device may read any profile's
+//!     `images/`/`attachments/` here (including the host-level `engine_home` candidates): the apps
+//!     show several profiles on one device. The rule is written out, and pinned, in
+//!     `attachment_refs.rs`'s module header;
 //!   * one path component, never a traversal, and a symlink is refused rather than followed;
 //!   * bytes are written beside the target, chmod 0600, then renamed, so a reader never sees half a
 //!     file;

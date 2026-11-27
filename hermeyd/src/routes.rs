@@ -329,6 +329,17 @@ fn is_loopback(addr: &SocketAddr) -> bool {
     addr.ip().is_loopback()
 }
 
+/// The headers a reverse proxy adds — `tailscale serve`, the documented deployment. Any of them
+/// means the peer address is the proxy's loopback address and says nothing about the caller:
+/// `is_loopback()` is true for every tailnet peer that arrives that way. One list, shared with
+/// `bot_message` (which guards the same way on the bot-message routes) so the two cannot drift.
+pub(crate) const PROXY_HEADERS: [&str; 4] =
+    ["forwarded", "x-forwarded-for", "x-real-ip", "tailscale-user-login"];
+
+fn proxied(headers: &HeaderMap) -> bool {
+    PROXY_HEADERS.iter().any(|name| headers.contains_key(*name))
+}
+
 fn bearer(headers: &HeaderMap) -> Option<String> {
     headers
         .get(axum::http::header::AUTHORIZATION)?
@@ -358,10 +369,17 @@ pub async fn pair_host(
 pub async fn pair_start(
     State(st): State<Arc<AppState>>,
     ConnectInfo(peer): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
 ) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
     // Host-only mint. A paired device may also mint (that grants nothing it lacks), but an
     // unauthenticated remote caller must not.
-    if !is_loopback(&peer) {
+    //
+    // The peer alone says nothing: through `tailscale serve` every request arrives from 127.0.0.1,
+    // so a proxy header means the caller is a tailnet peer and must be refused with the loopback
+    // ones (`docs/SECURITY.md`, surface map). This is the gate that keeps the claim at
+    // `pair_claim` honest: a code can only be minted by someone on this host, so a remote caller
+    // can only ever claim a code the owner minted and was shown.
+    if proxied(&headers) || !is_loopback(&peer) {
         return Err((
             StatusCode::FORBIDDEN,
             Json(json!({"detail": "pairing codes are minted on the host"})),
@@ -380,6 +398,7 @@ pub async fn pair_start(
 pub async fn pair_claim(
     State(st): State<Arc<AppState>>,
     ConnectInfo(peer): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
     Json(body): Json<ClaimRequest>,
 ) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
     if let Err(retry_after) = st.limiter.check(&peer.ip().to_string()) {
@@ -388,6 +407,22 @@ pub async fn pair_claim(
             StatusCode::TOO_MANY_REQUESTS,
             Json(json!({"detail": "too many pairing attempts", "retry_after": retry_after})),
         ));
+    }
+    let key = body.public_key.trim();
+    if key.len() < 32 || key.len() > 512 {
+        eprintln!("pair/claim: KEY REJECTED len={} from {}", key.len(), peer.ip());
+        return Err((
+            StatusCode::BAD_REQUEST,
+            Json(json!({"detail": "public_key must be 32-512 characters"})),
+        ));
+    }
+    // Unlike `pair_start`, a proxied claim is *not* refused: the apps redeem the code they were
+    // shown against the served URL (`docs/SECURITY.md`, surface map), so refusing a proxy here
+    // would end remote pairing. What makes the route safe is the code itself — and `pair_start`
+    // now mints only on the host, so a proxied claim can only redeem a code the owner minted and
+    // was shown. The limiter above bounds guessing.
+    if proxied(&headers) {
+        eprintln!("pair/claim: proxied redemption (tailscale serve) from a tailnet peer");
     }
     if !st.pairing.redeem(&body.code) {
         // Never log the code itself; the shape of the attempt is what diagnoses this.
@@ -398,14 +433,6 @@ pub async fn pair_claim(
         return Err((
             StatusCode::UNAUTHORIZED,
             Json(json!({"detail": "pairing code invalid or expired"})),
-        ));
-    }
-    let key = body.public_key.trim();
-    if key.len() < 32 || key.len() > 512 {
-        eprintln!("pair/claim: KEY REJECTED len={} from {}", key.len(), peer.ip());
-        return Err((
-            StatusCode::BAD_REQUEST,
-            Json(json!({"detail": "public_key must be 32-512 characters"})),
         ));
     }
     if st.store.count_active() >= MAX_DEVICES {
@@ -848,6 +875,133 @@ mod tests {
         let url = crate::engine_client::engine_url(&off.engine_ws, off.engine_token().as_deref());
         assert_eq!(url, "ws://127.0.0.1:9121/api/ws", "the URL carries no token parameter");
         assert!(!url.contains("token="), "{url}");
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    // ---- pairing boundary ----------------------------------------------------------------------
+
+    const KEY: &str = "pairing-key-0123456789abcdef0123456789abcdef-pairing-key";
+
+    fn loopback() -> ConnectInfo<SocketAddr> {
+        ConnectInfo("127.0.0.1:51000".parse().unwrap())
+    }
+
+    fn proxied_headers() -> HeaderMap {
+        // One header is enough to prove the guard; `tailscale serve` sends several of them at once.
+        let mut headers = HeaderMap::new();
+        headers.insert("x-forwarded-for", "100.64.0.9".parse().unwrap());
+        headers.insert("tailscale-user-login", "mo@example.com".parse().unwrap());
+        headers
+    }
+
+    fn claim(code: &str, public_key: &str) -> Json<ClaimRequest> {
+        Json(ClaimRequest {
+            code: code.to_string(),
+            public_key: public_key.to_string(),
+            device_name: "Test Device".to_string(),
+            platform: "macos".to_string(),
+        })
+    }
+
+    /// The guard the audit found missing: every request through `tailscale serve` arrives from
+    /// 127.0.0.1, so `is_loopback()` alone let a tailnet peer mint pairing codes. A proxy header
+    /// must count as non-local, exactly as the bot-message routes already treat it.
+    #[tokio::test]
+    async fn a_proxied_request_cannot_mint_a_pairing_code() {
+        let dir = scratch("pair-mint-proxy");
+        let st = state(&dir);
+
+        let refused =
+            pair_start(State(Arc::clone(&st)), loopback(), proxied_headers()).await.unwrap_err();
+        assert_eq!(refused.0, StatusCode::FORBIDDEN);
+        assert_eq!(
+            st.store.count_active(),
+            0,
+            "nothing was minted, so nothing can be claimed"
+        );
+
+        // A remote peer that hides behind no proxy is still refused by the peer check itself.
+        let remote =
+            pair_start(State(Arc::clone(&st)), ConnectInfo("10.0.0.9:40000".parse().unwrap()), HeaderMap::new()).await;
+        assert_eq!(remote.unwrap_err().0, StatusCode::FORBIDDEN);
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// The whole chain the audit described, end to end: a proxied peer minted its own code and
+    /// claimed it unattended, arriving as a device. Minting is the gate — with it closed, a proxied
+    /// claim can only ever redeem a code the owner minted and was shown, which is the documented
+    /// pairing flow (`docs/SECURITY.md`, surface map: the apps redeem against the served URL).
+    #[tokio::test]
+    async fn a_proxied_peer_cannot_mint_then_claim_its_way_to_a_device() {
+        let dir = scratch("pair-chain-proxy");
+        let st = state(&dir);
+
+        // Mint through the proxy: refused.
+        let mint = pair_start(State(Arc::clone(&st)), loopback(), proxied_headers()).await;
+        assert_eq!(mint.unwrap_err().0, StatusCode::FORBIDDEN);
+
+        // Claim without a code: refused, and no device row appears.
+        let claimed = pair_claim(
+            State(Arc::clone(&st)),
+            loopback(),
+            proxied_headers(),
+            claim("000000", KEY),
+        )
+        .await;
+        assert_eq!(claimed.unwrap_err().0, StatusCode::UNAUTHORIZED);
+        assert_eq!(st.store.count_active(), 0, "the chain must end with no device");
+
+        // Control, on the same code path the app uses: the owner mints on the host (no proxy
+        // header), the device redeems through the proxy — pairing keeps working.
+        let minted =
+            pair_start(State(Arc::clone(&st)), loopback(), HeaderMap::new()).await.expect("mint");
+        let code = minted.0.get("code").and_then(Value::as_str).expect("code").to_string();
+        let paired = pair_claim(
+            State(Arc::clone(&st)),
+            loopback(),
+            proxied_headers(),
+            claim(&code, KEY),
+        )
+        .await
+        .expect("a proxied claim with the owner's code still pairs");
+        assert!(paired.0.get("device_id").and_then(Value::as_str).is_some());
+        assert!(paired.0.get("refresh_token").and_then(Value::as_str).is_some());
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// `pair_claim` used to redeem the single-use code *before* validating the key, so a malformed
+    /// claim destroyed the code the host just displayed and the owner had to mint again — and a
+    /// probe that glimpsed a code could burn it for free. Validate first, redeem second.
+    #[tokio::test]
+    async fn a_bad_public_key_no_longer_burns_the_pairing_code() {
+        let dir = scratch("pair-key-order");
+        let st = state(&dir);
+
+        let minted =
+            pair_start(State(Arc::clone(&st)), loopback(), HeaderMap::new()).await.expect("mint");
+        let code = minted.0.get("code").and_then(Value::as_str).expect("code").to_string();
+
+        let short = pair_claim(
+            State(Arc::clone(&st)),
+            loopback(),
+            HeaderMap::new(),
+            claim(&code, "short"),
+        )
+        .await;
+        assert_eq!(short.unwrap_err().0, StatusCode::BAD_REQUEST);
+
+        let paired = pair_claim(
+            State(Arc::clone(&st)),
+            loopback(),
+            HeaderMap::new(),
+            claim(&code, KEY),
+        )
+        .await
+        .expect("the code survived the malformed claim and still pairs");
+        assert!(paired.0.get("device_id").and_then(Value::as_str).is_some());
 
         let _ = std::fs::remove_dir_all(&dir);
     }
