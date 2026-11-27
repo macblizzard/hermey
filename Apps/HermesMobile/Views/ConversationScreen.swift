@@ -1228,20 +1228,18 @@ struct ConversationScreen: View {
                      isSending: model.isBusy,
                      isDisabled: sessionID == nil,
                      hasAttachments: !model.pendingAttachments.isEmpty,
-                     micSystemImage: micGlyph,
-                     micTint: voice.state == .recording ? Tokens.danger : nil,
-                     micAccessibilityLabel: micLabel,
-                     // One listener: while the conversation owns the microphone, dictation is
-                     // disabled rather than queued behind it.
-                     isMicEnabled: sessionID != nil && !voiceLoop.isActive,
-                     showsVoiceMode: true,
-                     voiceModeSystemImage: voiceLoop.state.glyph,
-                     voiceModeTint: voiceLoop.isActive ? Tokens.accent : nil,
-                     voiceModeAccessibilityLabel: voiceLoop.isActive
-                        ? "End the voice conversation"
-                        : "Start a hands-free voice conversation",
-                     isVoiceModeEnabled: sessionID != nil,
-                     onVoiceMode: { toggleVoiceMode() },
+                     // One audio control: tap opens the hands-free conversation, hold dictates.
+                     // Its glyph and tint follow whichever of the two owns the microphone, so the
+                     // single element always says which promise is live.
+                     voice: ComposerVoiceButton(systemImage: voiceControlGlyph,
+                                                tint: voiceControlTint,
+                                                label: voiceControlLabel,
+                                                isEnabled: sessionID != nil && !voice.isBusy,
+                                                onTap: { voiceControlTap() },
+                                                onHold: { voiceControlHold() }),
+                     // Dictation's own state, in words: the glyph says the mode, this says what it
+                     // is doing and how to stop it. The same sentence the desktop uses.
+                     hint: dictationHint,
                      // The same pill the desktop draws, for this bot: tapping it opens the sheet
                      // the drawer's Model row opens (`BotModelSheet`), which writes through
                      // `configureModel` and refreshes `modelLabel` for the open bot.
@@ -1257,7 +1255,6 @@ struct ConversationScreen: View {
                              showAttachmentMenu.toggle()
                          }
                      },
-                     onMic: { toggleRecording() },
                      onInterrupt: { Task { await model.interrupt() } },
                      onCommand: runCommand,
                      // The caret belongs to this screen, so the tap that arrives before the
@@ -1537,22 +1534,55 @@ struct ConversationScreen: View {
                 })
     }
 
-    /// The microphone's glyph and label, from the voice controller's own state — the composer
-    /// cannot know whether it is idle, listening or transcribing.
-    private var micGlyph: String {
+    /// What dictation's own controller is doing, in the composer's glyph language — the composer
+    /// cannot know whether it is idle, requesting permission, recording or transcribing.
+    private var dictationGlyph: String {
         switch voice.state {
         case .recording: return "stop.circle.fill"
-        case .requestingPermission, .transcribing: return "waveform"
-        default: return "mic"
+        case .transcribing: return "ellipsis"
+        // Idle, and the permission prompt: the resting shape, dim.
+        default: return VoiceLoopState.off.glyph
         }
     }
 
-    private var micLabel: String {
+    /// The one audio control's glyph.
+    ///
+    /// The loop's waveform at rest, because a tap opens the conversation. While dictation does
+    /// anything at all the same element wears dictation's glyph — that is how one control states
+    /// which of its two promises is live without a second control to compare it against.
+    private var voiceControlGlyph: String {
+        if voiceLoop.state.ownsMicrophone { return voiceLoop.state.glyph }
+        if voice.state != .idle { return dictationGlyph }
+        return VoiceLoopState.off.glyph
+    }
+
+    /// The dictation's own line under the card: what it is doing, and how to end it. The same
+    /// sentence the Mac's composer uses, so one description of the recorder exists on both shells.
+    private var dictationHint: String? {
         switch voice.state {
-        case .recording: return "Stop and transcribe"
+        case .recording: return "recording · tap the square to transcribe"
+        case .requestingPermission: return "waiting for microphone permission…"
+        case .transcribing: return "transcribing…"
+        default: return nil
+        }
+    }
+
+    /// The loop's accent while it owns the microphone, the recorder's red while it records.
+    private var voiceControlTint: Color? {
+        if voiceLoop.state.ownsMicrophone { return Tokens.accent }
+        if voice.state == .recording { return Tokens.danger }
+        return nil
+    }
+
+    /// One element, two actions. Idle, it names both — that is the whole of the discoverability
+    /// story for anyone who cannot see the hint line.
+    private var voiceControlLabel: String {
+        if voiceLoop.isActive { return "Voice conversation on; tap to end it, hold to dictate" }
+        switch voice.state {
+        case .recording: return "Recording a dictation; tap to stop and transcribe"
         case .requestingPermission: return "Waiting for microphone permission"
-        case .transcribing: return "Transcribing"
-        default: return "Record a voice message"
+        case .transcribing: return "Transcribing the dictation"
+        default: return "Voice conversation; hold to dictate"
         }
     }
 
@@ -1595,13 +1625,40 @@ struct ConversationScreen: View {
         )
     }
 
+    /// A tap on the one audio control: the hands-free conversation, and only it.
+    ///
+    /// It ends the conversation it started, stops a dictation the other gesture started (the words
+    /// go to the field, as a dictation always does), and otherwise opens the loop. A tap can never
+    /// leave two captures running.
+    private func voiceControlTap() {
+        if voice.state == .recording {
+            voice.stopAndTranscribe(onTranscript: insertTranscript)
+            return
+        }
+        toggleVoiceMode()
+    }
+
+    /// A hold on the same control: dictation.
+    ///
+    /// One recording, transcribed into the draft, nothing sent. The conversation is closed first —
+    /// one microphone, one listener — and a hold while a dictation is already running is not a
+    /// second start; the tap is what ends it.
+    private func voiceControlHold() {
+        // The control is already dim without a session; the guard is the same fact stated once
+        // more where the gesture lands, so a hold can never open a capture with nowhere to send it.
+        guard sessionID != nil else { return }
+        if voiceLoop.isActive { voiceLoop.stop() }
+        guard voice.state == .idle else { return }
+        // Refresh first: the pairing may have changed since this screen appeared.
+        voice.transport = app.makeVoiceTransport()
+        voice.startRecording()
+    }
+
     /// One tap starts the conversation; the same tap (or a spoken "stop") ends it.
     ///
-    /// The two audio controls in the composer are **different promises**: the microphone records
-    /// one message and puts the words in the field, this one opens a continuous conversation that
-    /// answers out loud and keeps listening. A tap that cannot start it says why — a control that
-    /// returns into silence is indistinguishable from a dead button, which is exactly the report
-    /// "hands-free voice does nothing on my phone" that produced this file's comments.
+    /// A tap that cannot start it says why — a control that returns into silence is
+    /// indistinguishable from a dead button, which is exactly the report "hands-free voice does
+    /// nothing on my phone" that produced this file's comments.
     private func toggleVoiceMode() {
         if voiceLoop.isActive {
             voiceLoop.stop()
@@ -1614,16 +1671,6 @@ struct ConversationScreen: View {
         // Close dictation first: one microphone, one listener.
         if voice.state != .idle { voice.cancel() }
         voiceLoop.start()
-    }
-
-    private func toggleRecording() {
-        // Refresh first: the pairing may have changed since this screen appeared.
-        voice.transport = app.makeVoiceTransport()
-        if voice.state == .recording {
-            voice.stopAndTranscribe(onTranscript: insertTranscript)
-        } else {
-            voice.startRecording()
-        }
     }
 
     /// Put the transcript where the user can read it before it is sent: replace an empty

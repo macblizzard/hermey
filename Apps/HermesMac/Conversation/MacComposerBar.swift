@@ -57,26 +57,49 @@ struct MacComposerBar: View {
     }
 
     /// The microphone's glyph and tint, from the controller's own state.
-    private var micGlyph: String {
+    private var dictationGlyph: String {
         switch voice.state {
         case .recording: return "stop.circle.fill"
-        case .requestingPermission, .transcribing: return "waveform"
-        case .idle: return "mic"
+        case .transcribing: return "ellipsis"
+        // Idle, and the permission prompt: the resting shape, dim.
+        case .requestingPermission, .idle: return VoiceLoopState.off.glyph
+        }
+    }
+
+    /// The one audio control's glyph.
+    ///
+    /// The loop's waveform at rest — a tap opens the conversation, so the resting glyph is the
+    /// conversation's. While dictation does anything at all the control shows *dictation*, which is
+    /// the only way the same element can say which of its two promises is live.
+    private var voiceControlGlyph: String {
+        if loop.state.ownsMicrophone { return loop.state.glyph }
+        if voice.state != .idle { return dictationGlyph }
+        return VoiceLoopState.off.glyph
+    }
+
+    /// And its tint: the loop's accent while it owns the microphone, the recorder's red while it
+    /// records, nothing at rest.
+    private var voiceControlTint: Color? {
+        if loop.state.ownsMicrophone { return Tokens.accentText }
+        if voice.isRecording { return Tokens.danger }
+        return nil
+    }
+
+    /// One element, two actions: the label names both while there is nothing running, and the
+    /// state that is running while there is.
+    private var voiceControlLabel: String {
+        if loop.isActive { return "Voice conversation on; tap to end it, hold to dictate" }
+        switch voice.state {
+        case .recording: return "Recording a dictation; tap to stop and transcribe"
+        case .requestingPermission: return "Waiting for microphone permission"
+        case .transcribing: return "Transcribing the dictation"
+        case .idle: return "Voice conversation; hold to dictate"
         }
     }
 
     /// The same words iOS puts in an empty composer: "Message Cody".
     private var composerTitle: String {
         model.selectedBot?.displayName ?? model.hostName
-    }
-
-    private var micLabel: String {
-        switch voice.state {
-        case .recording: return "Stop and transcribe"
-        case .requestingPermission: return "Waiting for microphone permission"
-        case .transcribing: return "Transcribing"
-        case .idle: return "Record a voice message"
-        }
     }
 
 
@@ -179,23 +202,17 @@ struct MacComposerBar: View {
                      placeholder: "Message \(composerTitle)",
                      isSending: model.isStreaming,
                      isDisabled: model.selectedSessionID == nil,
-                     // Inside the card, immediately left of the send arrow.
-                     showsMic: store.isPaired,
-                     micSystemImage: micGlyph,
-                     micTint: voice.isRecording ? Tokens.danger : nil,
-                     micAccessibilityLabel: micLabel,
-                     // One listener. While the conversation owns the microphone, hold-to-talk is
-                     // disabled rather than ignored: two taps on one input device is a feedback
-                     // loop, not a feature.
-                     isMicEnabled: canRecordVoice && !voice.isBusy && !loop.isActive,
-                     showsVoiceMode: true,
-                     voiceModeSystemImage: loop.state.glyph,
-                     voiceModeTint: loop.isActive ? Tokens.accentText : nil,
-                     voiceModeAccessibilityLabel: loop.isActive
-                        ? "End the voice conversation"
-                        : "Start a hands-free voice conversation",
-                     isVoiceModeEnabled: canStartVoiceMode,
-                     onVoiceMode: { toggleVoiceMode() },
+                     // One audio control, immediately left of the send arrow: tap opens the
+                     // hands-free conversation, hold dictates. Drawn only when this window is
+                     // paired — a ticket-only pairing cannot mint the ticket every request needs.
+                     voice: store.isPaired
+                        ? ComposerVoiceButton(systemImage: voiceControlGlyph,
+                                              tint: voiceControlTint,
+                                              label: voiceControlLabel,
+                                              isEnabled: canRecordVoice && !voice.isBusy,
+                                              onTap: { voiceControlTap() },
+                                              onHold: { voiceControlHold() })
+                        : nil,
                      hint: hint,
                      // The session's own facts, inside the composer: which model answers, how full
                      // its context is, and the door to the one picker the Mac already has. Both
@@ -210,7 +227,6 @@ struct MacComposerBar: View {
                                                     onOpen: openModelPicker),
                      onSend: { store.send() },
                      onAttach: { showsAttachmentMenu = true },
-                     onMic: { toggleVoice() },
                      onInterrupt: interrupt,
                      // A pasted screenshot or a file dropped on the field is an attachment, exactly
                      // like one picked from the paperclip's menu.
@@ -337,19 +353,19 @@ struct MacComposerBar: View {
         store.openModel(bot)
     }
 
-    private func toggleVoice() {
-        guard canRecordVoice else { return }
-        if voice.isRecording {
-            voice.stopAndTranscribe()
-        } else {
-            voice.startRecording()
-        }
-    }
-
-    /// One tap starts the conversation; the same tap (or a spoken "stop") ends it.
-    private func toggleVoiceMode() {
+    /// A tap on the one audio control: the hands-free conversation, and only it.
+    ///
+    /// It ends the conversation it started, stops a dictation that was started by the other
+    /// gesture (sending the words to the field, as a dictation always does), and otherwise opens
+    /// the loop. A tap can never leave two captures running: the loop is closed before dictation
+    /// begins and dictation is cancelled before the loop begins.
+    private func voiceControlTap() {
         if loop.isActive {
             loop.stop()
+            return
+        }
+        if voice.isRecording {
+            voice.stopAndTranscribe()
             return
         }
         guard canStartVoiceMode else { return }
@@ -357,6 +373,18 @@ struct MacComposerBar: View {
         // loop started underneath it would be the second listener on one microphone.
         if voice.isRecording || voice.isBusy { voice.cancel() }
         loop.start()
+    }
+
+    /// A hold on the same control: dictation.
+    ///
+    /// One recording, transcribed into the draft, and nothing sent. The loop is closed first for
+    /// the same reason in the other direction — one microphone, one listener — and a hold while a
+    /// dictation is already running is not a second start.
+    private func voiceControlHold() {
+        if loop.isActive { loop.stop() }
+        guard canRecordVoice, !voice.isBusy else { return }
+        guard !voice.isRecording else { return }
+        voice.startRecording()
     }
 
     private var pendingAttachmentsBar: some View {

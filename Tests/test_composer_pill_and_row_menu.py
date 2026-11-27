@@ -202,7 +202,7 @@ class TheComposerCarriesItsModelInTheRow(unittest.TestCase):
         # One band, no per-platform split: under the field row, inside the same rounded container,
         # before the card's own `hint` — so it can never cover a character being typed.
         use = between(self.COMPOSER_SOURCE,
-                      "            .padding(.bottom, hint == nil ? 8 : 2)\n",
+                      "            .padding(.bottom, hint == nil && !showsVoiceHint ? 8 : 2)\n",
                       "if let hint, !hint.isEmpty {")
         self.assertIn("sessionPillBand", use)
         self.assertNotIn("#if os(iOS)", use, "the band is one rule, not a phone-only branch")
@@ -231,9 +231,10 @@ class TheComposerCarriesItsModelInTheRow(unittest.TestCase):
                        "if let hint, !hint.isEmpty {")
         self.assertIn("field\n                    .frame(minHeight: rowHeight)", body)
         # The field row's own padding is untouched by the pill: it is still the same 8/6/8 the card
-        # has always used.
+        # has always used. The foot is tight (2) whenever *any* line sits under the card — the
+        # state line, or the one-time voice hint — and full (8) when nothing does.
         self.assertIn(".padding(.horizontal, 8)\n            .padding(.top, 6)\n"
-                      "            .padding(.bottom, hint == nil ? 8 : 2)", body)
+                      "            .padding(.bottom, hint == nil && !showsVoiceHint ? 8 : 2)", body)
 
     def test_typing_cannot_re_lay_the_pill_out(self) -> None:
         self.assertIn("public struct ComposerModelPill: View, Equatable", self.PILL_SOURCE)

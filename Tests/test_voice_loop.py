@@ -58,10 +58,23 @@ class OneOwner(unittest.TestCase):
             self.assertIn(case, body)
         self.assertIn("case .off, .failed: return false", body)
 
-    def test_both_shells_disable_the_other_capture(self) -> None:
-        # Hold-to-talk stays, but not while the loop is open: one microphone, one listener.
-        self.assertIn("!loop.isActive", MAC_BAR)
-        self.assertIn("!voiceLoop.isActive", PHONE)
+    def test_both_shells_close_one_capture_before_opening_the_other(self) -> None:
+        # One control, two gestures — and one microphone. A hold closes the conversation before it
+        # records; a tap closes dictation before it listens. The Mac names the loop `loop`, the
+        # phone `voiceLoop`.
+        for shell, loop in ((MAC_BAR, "loop"), (PHONE, "voiceLoop")):
+            hold = swift_body(shell, "private func voiceControlHold()")
+            self.assertIn(f"if {loop}.isActive {{ {loop}.stop() }}", hold)
+        # The tap ends the conversation it started: inline on the Mac, through the same
+        # `toggleVoiceMode` the old loop control used on the phone.
+        mac_tap = swift_body(MAC_BAR, "private func voiceControlTap()")
+        self.assertIn("if loop.isActive", mac_tap)
+        self.assertIn("voice.cancel()", mac_tap)
+        phone_tap = swift_body(PHONE, "private func voiceControlTap()")
+        self.assertIn("toggleVoiceMode()", phone_tap)
+        phone_loop = swift_body(PHONE, "private func toggleVoiceMode()")
+        self.assertIn("if voiceLoop.isActive", phone_loop)
+        self.assertIn("voice.cancel()", phone_loop)
 
 
 class BargeIn(unittest.TestCase):
@@ -256,12 +269,14 @@ class Visibility(unittest.TestCase):
         self.assertIn("loop.state.title", BAR)
         self.assertIn("VoicePolicy.stopHint()", BAR)
 
-    def test_the_composer_carries_the_control_on_both_platforms(self) -> None:
-        self.assertIn("showsVoiceMode: true", MAC_BAR)
-        self.assertIn("showsVoiceMode: true", PHONE)
-        self.assertIn("onVoiceMode: { toggleVoiceMode() }", MAC_BAR)
-        self.assertIn("onVoiceMode: { toggleVoiceMode() }", PHONE)
-        self.assertIn("showsVoiceMode", COMPOSER)
+    def test_the_composer_carries_the_one_control_on_both_platforms(self) -> None:
+        for shell in (MAC_BAR, PHONE):
+            self.assertIn("voice: ", shell)
+            self.assertIn("ComposerVoiceButton(systemImage:", shell)
+            self.assertIn("onTap: { voiceControlTap() }", shell)
+            self.assertIn("onHold: { voiceControlHold() }", shell)
+        self.assertIn("ComposerVoiceButton", COMPOSER)
+        self.assertIn("private var voiceControl: some View", COMPOSER)
 
     def test_the_loop_is_wired_to_the_host_it_is_paired_with(self) -> None:
         for shell in (MAC_BAR, PHONE):
@@ -360,8 +375,13 @@ class TheStartIsVisible(unittest.TestCase):
         self.assertIn("loop.state == .failed", detail)
 
 
-class TheTwoControls(unittest.TestCase):
-    """One records a message; the other opens a conversation. They must not look the same."""
+class TheOneControl(unittest.TestCase):
+    """One glyph, two gestures: the conversation on a tap, dictation on a hold.
+
+    It was two controls — a microphone and a waveform — and the row read as crowded. What must
+    survive the merge is the distinction they drew: a user has to be able to tell, from the one
+    control, which of the two is running.
+    """
 
     def test_the_loop_never_draws_a_bare_microphone(self) -> None:
         glyphs = swift_body(STATE, "public var glyph")
@@ -372,29 +392,45 @@ class TheTwoControls(unittest.TestCase):
         self.assertIn('case .listening: return "waveform.circle.fill"', glyphs)
         self.assertIn('case .off: return "waveform"', glyphs)
 
-    def test_the_two_controls_carry_different_labels(self) -> None:
-        self.assertIn("voiceModeAccessibilityLabel", COMPOSER)
-        self.assertIn("micAccessibilityLabel", COMPOSER)
-        self.assertIn('accessibilityIdentifier("composer.voicemode")', COMPOSER)
-        self.assertIn('accessibilityIdentifier("composer.mic")', COMPOSER)
-        # The phone's own two labels, spelled out.
-        self.assertIn('"Start a hands-free voice conversation"', PHONE)
-        self.assertIn('"Record a voice message"', PHONE)
+    def test_one_element_and_one_identifier(self) -> None:
+        # Exactly one audio control in the row, with one accessibility identifier: two identifiers
+        # was the old two-control row, and a second glyph is what the owner asked to be rid of.
+        self.assertIn('accessibilityIdentifier("composer.voice")', COMPOSER)
+        self.assertNotIn('accessibilityIdentifier("composer.mic")', COMPOSER)
+        self.assertNotIn('accessibilityIdentifier("composer.voicemode")', COMPOSER)
+        self.assertEqual(COMPOSER.count("rowCentred(voiceControl)"), 1)
+        self.assertNotIn("micControl", COMPOSER)
+        self.assertNotIn("voiceModeControl", COMPOSER)
 
-    def test_the_waveform_is_the_loop_and_the_mic_is_dictation(self) -> None:
-        body = swift_body(PHONE, "private var micGlyph")
-        self.assertIn('"mic"', body)
-        self.assertIn('"stop.circle.fill"', body)
-        # The loop's control is fed the loop's glyph, never the dictation one.
-        self.assertIn("voiceModeSystemImage: voiceLoop.state.glyph", PHONE)
+    def test_the_label_names_both_actions(self) -> None:
+        for shell in (PHONE, MAC_BAR):
+            label = swift_body(shell, "private var voiceControlLabel")
+            self.assertIn('"Voice conversation; hold to dictate"', label)
+            self.assertIn("tap to end it, hold to dictate", label)
+
+    def test_the_control_wears_the_mode_that_is_running(self) -> None:
+        # At rest it is the loop's waveform; while dictation runs it is dictation's own glyph. That
+        # swap is the whole of "which promise is live".
+        for shell, loop in ((PHONE, "voiceLoop"), (MAC_BAR, "loop")):
+            glyph = swift_body(shell, "private var voiceControlGlyph")
+            self.assertIn(f"if {loop}.state.ownsMicrophone {{ return {loop}.state.glyph }}", glyph)
+            self.assertIn("if voice.state != .idle { return dictationGlyph }", glyph)
+            self.assertIn("return VoiceLoopState.off.glyph", glyph)
+        phone_glyph = swift_body(PHONE, "private var dictationGlyph")
+        self.assertIn('"stop.circle.fill"', phone_glyph)
+        # And the dictation's red while it records, so the recording is visible at a glance.
+        for shell in (PHONE, MAC_BAR):
+            self.assertIn("voice.state == .recording" if shell is PHONE else "voice.isRecording",
+                          swift_body(shell, "private var voiceControlTint"))
 
 
 class OneControllerPerScreen(unittest.TestCase):
     def test_the_phone_owns_exactly_one_loop(self) -> None:
         self.assertEqual(PHONE.count("VoiceLoopController("), 1)
-        # And it is the same object the status strip observes and the composer toggles.
+        # And it is the same object the status strip observes and the one control's tap drives.
         self.assertIn("VoiceLoopStatusBar(loop: voiceLoop)", PHONE)
-        self.assertIn("onVoiceMode: { toggleVoiceMode() }", PHONE)
+        self.assertIn("onTap: { voiceControlTap() }", PHONE)
+        self.assertIn("voiceLoop.start()", swift_body(PHONE, "private func toggleVoiceMode()"))
 
     def test_both_shells_send_the_lines_to_the_client_log(self) -> None:
         for shell in (PHONE, MAC_BAR):

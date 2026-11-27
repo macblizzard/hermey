@@ -4,6 +4,43 @@ import SwiftUI
 import AppKit
 #endif
 
+/// The composer's one audio control.
+///
+/// Two gestures, two promises: **tap** opens the hands-free conversation, **hold** dictates into
+/// the draft and sends nothing. The caller supplies the appearance and both actions, because only
+/// the two controllers know which of them owns the microphone; the composer knows only that there
+/// is one control and what each gesture means.
+///
+/// `onTap` is the whole of the conversation's verb — start it when it is off, end it when it is on
+/// — and `onHold` is the whole of dictation's. Neither may run while the other does: the shells
+/// close one before opening the other, which is the single rule that keeps two captures off one
+/// microphone.
+public struct ComposerVoiceButton {
+    /// The glyph. The loop's waveform at rest; the recorder's stop square while it records.
+    public var systemImage: String
+    public var tint: Color?
+    /// Names both actions while idle ("Voice conversation; hold to dictate") and the state that is
+    /// running while one of them is.
+    public var label: String
+    public var isEnabled: Bool
+    public var onTap: () -> Void
+    public var onHold: () -> Void
+
+    public init(systemImage: String,
+                tint: Color? = nil,
+                label: String,
+                isEnabled: Bool = true,
+                onTap: @escaping () -> Void,
+                onHold: @escaping () -> Void) {
+        self.systemImage = systemImage
+        self.tint = tint
+        self.label = label
+        self.isEnabled = isEnabled
+        self.onTap = onTap
+        self.onHold = onHold
+    }
+}
+
 /// The message field.
 ///
 /// It owns no state but its focus: the draft is the caller's binding, so a screen can
@@ -20,7 +57,6 @@ public struct Composer: View {
     private let queuedCount: Int
     private let hasAttachments: Bool
     private let showsAttach: Bool
-    private let showsMic: Bool
     private let hint: String?
     /// The session's model, drawn as a pill in the control row — right of the paperclip, on the
     /// same line as the send arrow.
@@ -33,7 +69,6 @@ public struct Composer: View {
     private let sessionRow: ComposerSessionRow?
     private let onSend: () -> Void
     private let onAttach: (() -> Void)?
-    private let onMic: (() -> Void)?
     private let onInterrupt: (() -> Void)?
     /// Files and pictures pasted or dropped into the field. Nil where the caller has no attach
     /// path (the phone takes them through its own picker).
@@ -49,26 +84,15 @@ public struct Composer: View {
     /// one, the composer completes the command into the field and lets the user send it.
     private let onCommand: ((HermesCommand) -> Void)?
 
-    /// The microphone's own presentation, supplied by the caller because only the recording
-    /// controller knows whether it is idle, listening or transcribing. It is drawn immediately
-    /// left of the send arrow — the phone's order — instead of on a separate line above the card.
-    private let micSystemImage: String
-    private let micTint: Color?
-    private let micAccessibilityLabel: String
-    private let isMicEnabled: Bool
-
-    /// The hands-free conversation's control, drawn left of the microphone.
+    /// The one audio control: a tap opens the hands-free conversation, a hold dictates.
     ///
-    /// A second slot rather than a second meaning for the microphone: hold-to-talk dictation and a
-    /// continuous loop are different promises, and one button that swaps between them is how a user
-    /// ends up talking to a microphone nobody is reading. When the loop is on, the caller disables
-    /// the microphone (`isMicEnabled: false`) so only one capture can ever run.
-    private let showsVoiceMode: Bool
-    private let voiceModeSystemImage: String
-    private let voiceModeTint: Color?
-    private let voiceModeAccessibilityLabel: String
-    private let isVoiceModeEnabled: Bool
-    private let onVoiceMode: (() -> Void)?
+    /// It used to be two — a microphone and a waveform — and the row they shared read as crowded:
+    /// two glyphs on the same line as the paperclip, the clear button and the send arrow, one of
+    /// which had to be explained. One control, two gestures, one accessibility element. The caller
+    /// supplies the glyph and the tint because only the controllers know which one owns the
+    /// microphone, so this view still knows nothing about `VoiceController` or
+    /// `VoiceLoopController` — only that an audio control exists and what its two gestures mean.
+    private let voice: ComposerVoiceButton?
 
     @FocusState private var focused: Bool
 
@@ -88,6 +112,17 @@ public struct Composer: View {
     /// disagree about it.
     @AppStorage(ComposerPreferences.dismissKeyboardOnSendKey)
     private var dismissKeyboardOnSend = ComposerPreferences.defaultDismissKeyboardOnSend
+
+    /// Whether this device has already been told what the voice control's two gestures are.
+    ///
+    /// Per device, in `UserDefaults`, so it is said once and never again: the gesture is a lesson
+    /// worth one line under the first composer that can use it, and a lecture worth none after that.
+    @AppStorage(ComposerPreferences.voiceHintSeenKey)
+    private var voiceHintSeen = false
+
+    /// True while a finger is down on the voice control, so the press reads as a press. The
+    /// long press owns it: it is the only gesture that lives for the whole touch.
+    @GestureState private var isVoicePressing = false
 
     #if os(macOS)
     /// The text view reports its own first-responder state: `@FocusState` cannot see an
@@ -110,22 +145,11 @@ public struct Composer: View {
                 queuedCount: Int = 0,
                 hasAttachments: Bool = false,
                 showsAttach: Bool = true,
-                showsMic: Bool = true,
-                micSystemImage: String = "mic",
-                micTint: Color? = nil,
-                micAccessibilityLabel: String = "Record a voice message",
-                isMicEnabled: Bool = true,
-                showsVoiceMode: Bool = false,
-                voiceModeSystemImage: String = "waveform",
-                voiceModeTint: Color? = nil,
-                voiceModeAccessibilityLabel: String = "Start a hands-free voice conversation",
-                isVoiceModeEnabled: Bool = true,
-                onVoiceMode: (() -> Void)? = nil,
+                voice: ComposerVoiceButton? = nil,
                 hint: String? = Composer.defaultHint,
                 sessionRow: ComposerSessionRow? = nil,
                 onSend: @escaping () -> Void,
                 onAttach: (() -> Void)? = nil,
-                onMic: (() -> Void)? = nil,
                 onInterrupt: (() -> Void)? = nil,
                 onAttachItems: (([ComposerAttachment]) -> Void)? = nil,
                 attachPopoverPresented: Binding<Bool>? = nil,
@@ -140,22 +164,11 @@ public struct Composer: View {
         self.queuedCount = queuedCount
         self.hasAttachments = hasAttachments
         self.showsAttach = showsAttach
-        self.showsMic = showsMic
-        self.micSystemImage = micSystemImage
-        self.micTint = micTint
-        self.micAccessibilityLabel = micAccessibilityLabel
-        self.isMicEnabled = isMicEnabled
-        self.showsVoiceMode = showsVoiceMode
-        self.voiceModeSystemImage = voiceModeSystemImage
-        self.voiceModeTint = voiceModeTint
-        self.voiceModeAccessibilityLabel = voiceModeAccessibilityLabel
-        self.isVoiceModeEnabled = isVoiceModeEnabled
-        self.onVoiceMode = onVoiceMode
+        self.voice = voice
         self.hint = hint
         self.sessionRow = sessionRow
         self.onSend = onSend
         self.onAttach = onAttach
-        self.onMic = onMic
         self.onInterrupt = onInterrupt
         self.onAttachItems = onAttachItems
         self.attachPopoverPresented = attachPopoverPresented
@@ -290,8 +303,8 @@ public struct Composer: View {
                     .frame(minHeight: rowHeight)
 
                 // One tap clears everything typed. Inside the card, right of the text and left of
-                // the mic: it belongs to the field, not to the message's verbs. Dim on purpose —
-                // it is an escape hatch, not a control in the row of actions.
+                // the voice control: it belongs to the field, not to the message's verbs. Dim on
+                // purpose — it is an escape hatch, not a control in the row of actions.
                 // Reserved, never inserted: a 40 pt control appearing in the row took 40 pt off the
                 // field the instant the first character landed, and a long line re-wrapped onto
                 // another line because of it — while the reader watched the text move.
@@ -321,14 +334,11 @@ public struct Composer: View {
                     .hermeyFocusQuiet()
                 }
 
-                // The microphone belongs beside the send arrow: one row of controls, and the
-                // control that ends a message next to the one that starts it.
-                if showsVoiceMode {
-                    rowCentred(voiceModeControl)
-                }
-
-                if showsMic {
-                    rowCentred(micControl)
+                // The one audio control: tap for the hands-free conversation, hold to dictate.
+                // It sits where the microphone sat — immediately left of the send arrow — because
+                // the row it shares is the row of verbs, and there is only one voice verb now.
+                if voice != nil {
+                    rowCentred(voiceControl)
                 }
 
                 // The closure is spelled as a `Group` argument, not a trailing one: a bare
@@ -346,10 +356,14 @@ public struct Composer: View {
             }
             .padding(.horizontal, 8)
             .padding(.top, 6)
-            .padding(.bottom, hint == nil ? 8 : 2)
+            .padding(.bottom, hint == nil && !showsVoiceHint ? 8 : 2)
 
             // The session's model, on its own row under the field, on both platforms.
             sessionPillBand
+
+            // One line, once per device: what the two gestures on the audio control do. Under the
+            // first composer that has a session, and gone for good after it is read or used.
+            voiceHintRow
 
             if let hint, !hint.isEmpty {
                 Text(hint)
@@ -663,60 +677,96 @@ public struct Composer: View {
         }
     }
 
-    /// The conversation toggle: one tap opens the microphone and keeps it open until it is tapped
-    /// again, or until the user says "stop".
+    /// How long a press must last before it is a dictation rather than a tap.
+    static let voiceHoldSeconds: Double = 0.45
+
+    /// The one audio control. **Tap** opens the hands-free conversation; **hold** dictates.
     ///
-    /// Tinted while the loop owns the microphone, so the control's own appearance is the answer to
-    /// "is this thing listening right now?" — the status line above the card carries the detail.
+    /// A `Button` cannot carry both: its action fires on touch-up even after a long press has
+    /// begun, so the press would be read twice. The gesture is explicit and *exclusive* instead —
+    /// whichever of the two succeeds first takes the touch, and the other never sees it. That is
+    /// also what keeps the two promises from crossing: one control, one capture, at any moment.
     @ViewBuilder
-    private var voiceModeControl: some View {
-        if let onVoiceMode {
-            Button {
-                Haptics.selection()
-                onVoiceMode()
-            } label: {
-                Image(systemName: voiceModeSystemImage)
-                    .font(.system(size: glyphSize, weight: .semibold))
-                    .foregroundStyle(voiceModeTint ?? Tokens.textSecondary)
-                    .frame(width: controlSide, height: controlSide)
-                    .contentShape(Circle())
-            }
-            .buttonStyle(PressableButtonStyle())
-            .disabled(isDisabled || !isVoiceModeEnabled)
-            .opacity(isVoiceModeEnabled ? 1 : 0.5)
-            .hermeyFocusQuiet()
-            #if os(macOS)
-            .help(voiceModeAccessibilityLabel)
-            #endif
-            .accessibilityLabel(voiceModeAccessibilityLabel)
-            .accessibilityIdentifier("composer.voicemode")
+    private var voiceControl: some View {
+        if let voice {
+            Image(systemName: voice.systemImage)
+                .font(.system(size: glyphSize, weight: .semibold))
+                .foregroundStyle(voice.tint ?? Tokens.textSecondary)
+                .frame(width: controlSide, height: controlSide)
+                .contentShape(Circle())
+                .scaleEffect(isVoicePressing ? 0.94 : 1)
+                .animation(Motion.press, value: isVoicePressing)
+                .opacity(voice.isEnabled ? 1 : 0.5)
+                .gesture(
+                    TapGesture()
+                        .exclusively(before: LongPressGesture(minimumDuration: Self.voiceHoldSeconds)
+                            .updating($isVoicePressing) { _, pressing, _ in pressing = true })
+                        .onEnded { result in
+                            guard voice.isEnabled else { return }
+                            // The lesson has landed the moment it is used, whatever it was.
+                            voiceHintSeen = true
+                            switch result {
+                            case .first: voice.onTap()
+                            case .second: voice.onHold()
+                            }
+                        }
+                )
+                // A disabled control is not a button that fails; it is not there to be pressed.
+                .allowsHitTesting(voice.isEnabled)
+                .hermeyFocusQuiet()
+                #if os(macOS)
+                .help(voice.label)
+                #endif
+                // One element, not two glyphs: it names both actions while idle, and the state
+                // that is actually running while either one is.
+                .accessibilityElement()
+                .accessibilityAddTraits(.isButton)
+                .accessibilityLabel(voice.label)
+                // A hold cannot be timed under VoiceOver, so dictation is also a named action on
+                // this same element — the rotor's way of doing what the finger does by waiting.
+                .accessibilityAction(named: Text(ComposerPreferences.dictationActionName)) {
+                    guard voice.isEnabled else { return }
+                    voiceHintSeen = true
+                    voice.onHold()
+                }
+                .accessibilityIdentifier("composer.voice")
         }
     }
 
-    /// The microphone. Drawn only when the caller supplied an action, so the phone's composer
-    /// (which has its own voice affordances) is unchanged.
+    /// The one-time line under the composer.
+    ///
+    /// It waits for a session, because until the shell has one the control is dim and a lesson
+    /// about a gesture that does nothing is noise. It yields to the state line while something is
+    /// recording, and it is dismissed by either being read-and-closed or by simply being used.
+    private var showsVoiceHint: Bool {
+        guard voice != nil, !voiceHintSeen, !isDisabled else { return false }
+        return hint?.isEmpty ?? true
+    }
+
     @ViewBuilder
-    private var micControl: some View {
-        if let onMic {
-            Button {
-                Haptics.selection()
-                onMic()
-            } label: {
-                Image(systemName: micSystemImage)
-                    .font(.system(size: glyphSize, weight: .semibold))
-                    .foregroundStyle(micTint ?? Tokens.textSecondary)
-                    .frame(width: controlSide, height: controlSide)
-                    .contentShape(Circle())
+    private var voiceHintRow: some View {
+        if showsVoiceHint {
+            HStack(spacing: 5) {
+                Image(systemName: "hand.tap")
+                    .font(.system(size: 9, weight: .medium))
+                Text(ComposerPreferences.voiceHintText)
+                    .font(TypeScale.font(TypeScale.caption))
+                Spacer(minLength: 6)
+                Button { voiceHintSeen = true } label: {
+                    Image(systemName: "xmark")
+                        .font(.system(size: 9, weight: .semibold))
+                        .frame(width: 18, height: 18)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Dismiss the voice hint")
+                .hermeyFocusQuiet()
             }
-            .buttonStyle(PressableButtonStyle())
-            .disabled(isDisabled || !isMicEnabled)
-            .opacity(isMicEnabled ? 1 : 0.5)
-            .hermeyFocusQuiet()
-            #if os(macOS)
-            .help(micAccessibilityLabel)
-            #endif
-            .accessibilityLabel(micAccessibilityLabel)
-            .accessibilityIdentifier("composer.mic")
+            .foregroundStyle(Tokens.textDim)
+            // Under the first character of the message, like the state line beside it.
+            .padding(.leading, showsAttach ? 8 + controlSide + 8 : 10)
+            .padding(.trailing, 10)
+            .padding(.bottom, 7)
         }
     }
 

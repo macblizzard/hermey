@@ -9,6 +9,15 @@ public enum ComposerPreferences {
     /// Settings → Chat puts it back.
     public static let dismissKeyboardOnSendKey = "hermey.composer.dismissKeyboardOnSend"
     public static let defaultDismissKeyboardOnSend = true
+
+    /// The composer's one audio control: a tap talks hands-free, a hold dictates. The line under
+    /// the composer says so once per device and then never again — the key is written the first
+    /// time the hint is dismissed *or* the control is used, so it cannot reappear after the lesson
+    /// has landed.
+    public static let voiceHintSeenKey = "hermey.composer.voiceHintSeen"
+    public static let voiceHintText = "Tap to talk hands-free · hold to dictate"
+    /// The named accessibility action that does what a hold does, for VoiceOver and the keyboard.
+    public static let dictationActionName = "Dictate"
 }
 
 /// What the field should do after the draft is cleared underneath it.

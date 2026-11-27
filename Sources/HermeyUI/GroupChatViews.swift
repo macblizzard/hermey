@@ -987,7 +987,6 @@ public struct RoomChatView: View {
                      placeholder: "Message the group",
                      isSending: sending,
                      hasAttachments: !pendingFiles.isEmpty,
-                     showsMic: false,
                      onSend: { Task { await post() } },
                      onAttach: {
                          #if os(iOS)
