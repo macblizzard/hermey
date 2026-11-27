@@ -237,21 +237,20 @@ public extension TranscriptEntry {
     ///
     /// This is the reliable path back from a relaunch. The vault matches a send to its row by the
     /// sentence the user typed, which is a heuristic; the reference names the exact file the host
-    /// stored, and the image store is keyed by that same name.
+    /// stored, and the image store is keyed by that same name. The parse is `MessageRefs`', the one
+    /// parser both shells share — the `📎` block included.
     var referenceAttachments: [SentAttachment] {
         guard role == .user, attachments.isEmpty else { return [] }
-        return MessageRefs.split(text).refs.map { path in
-            let name = (path as NSString).lastPathComponent
-            let isImage = Self.imageExtensions.contains((name as NSString).pathExtension.lowercased())
-            let location = AttachmentLocation.uploaded(profile: "", name: name.isEmpty ? path : name)
-            return SentAttachment(id: path,
-                                  name: name.isEmpty ? path : name,
-                                  isImage: isImage,
-                                  imageData: isImage ? AttachmentImageStore.data(named: name) : nil,
-                                  size: AttachmentFileCache.cachedSize(for: location))
+        return MessageRefs.attachments(in: text).attachments.map { reference in
+            SentAttachment(id: reference.id,
+                           name: reference.name,
+                           isImage: reference.isImage,
+                           imageData: reference.isImage
+                               ? AttachmentImageStore.data(named: reference.name)
+                               : nil,
+                           size: reference.size
+                               ?? AttachmentFileCache.cachedSize(
+                                   for: .reference(profile: "", path: reference.path)))
         }
     }
-
-    private static let imageExtensions: Set<String> = ["png", "jpg", "jpeg", "heic", "heif", "gif",
-                                                       "webp", "tiff", "bmp"]
 }

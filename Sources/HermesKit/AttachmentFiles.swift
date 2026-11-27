@@ -74,11 +74,16 @@ public enum AttachmentLocation: Hashable, Sendable {
     case uploaded(profile: String, name: String)
     /// `GET /v1/workspace/{profile}/file?path=…` — the route the Library already uses.
     case workspaceFile(profile: String, path: String)
+    /// `GET /v1/attachments?profile=&path=` — the bytes behind the reference a stored message
+    /// carries. This is the one a *second* device needs: it holds `@image:/…/upload_ab12.jpg` and
+    /// nothing else, and the route resolves that path inside the profile that owns it.
+    case reference(profile: String, path: String)
 
     public var profile: String {
         switch self {
         case let .uploaded(profile, _): return profile
         case let .workspaceFile(profile, _): return profile
+        case let .reference(profile, _): return profile
         }
     }
 
@@ -88,6 +93,9 @@ public enum AttachmentLocation: Hashable, Sendable {
         case let .uploaded(_, name):
             return (name as NSString).lastPathComponent
         case let .workspaceFile(_, path):
+            let tail = (path as NSString).lastPathComponent
+            return tail.isEmpty ? path : tail
+        case let .reference(_, path):
             let tail = (path as NSString).lastPathComponent
             return tail.isEmpty ? path : tail
         }
@@ -100,17 +108,27 @@ public enum AttachmentLocation: Hashable, Sendable {
     /// An uploaded file keeps the host's own name, because that is the handle the transcript quotes
     /// back and the cache was already keyed that way for pictures. A workspace file is keyed by a
     /// fingerprint of its path *plus* its extension: two folders may legally hold `report.xlsx`, and
-    /// Quick Look picks a viewer from the suffix.
+    /// Quick Look picks a viewer from the suffix. A reference is keyed the same way, and for one
+    /// more reason: the same *name* may exist in two profiles, and a fingerprint of the reference
+    /// keeps the two apart.
     public var cacheKey: String {
         switch self {
         case let .uploaded(_, name):
             return (name as NSString).lastPathComponent
         case let .workspaceFile(_, path):
-            let name = (path as NSString).lastPathComponent
-            let suffix = (name as NSString).pathExtension.lowercased()
-            let stem = "workspace-\(Self.fingerprint(path))"
-            return suffix.isEmpty ? stem : "\(stem).\(suffix)"
+            return Self.fingerprinted(path, prefix: "workspace")
+        case let .reference(_, path):
+            return Self.fingerprinted(path, prefix: "ref")
         }
+    }
+
+    /// `prefix-<fnv>.<ext>`, so the key is stable across launches and keeps the suffix a viewer
+    /// needs.
+    private static func fingerprinted(_ path: String, prefix: String) -> String {
+        let name = (path as NSString).lastPathComponent
+        let suffix = (name as NSString).pathExtension.lowercased()
+        let stem = "\(prefix)-\(fingerprint(path))"
+        return suffix.isEmpty ? stem : "\(stem).\(suffix)"
     }
 
     /// FNV-1a over the UTF-8 bytes: small, stable between launches, and not Swift's randomised
@@ -362,6 +380,18 @@ public struct AttachmentFileClient: Sendable {
                                                  resolvingAgainstBaseURL: false)
             else { throw AttachmentFetchError.notHTTP }
             components.queryItems = [URLQueryItem(name: "path", value: path)]
+            guard let built = components.url else { throw AttachmentFetchError.notHTTP }
+            url = built
+        case let .reference(profile, path):
+            // Both halves are query items, so neither can be read as a path segment: the host
+            // validates the reference itself and refuses anything outside the profile's `images/`
+            // and `attachments/`.
+            guard var components = URLComponents(url: resolved.baseURL
+                    .appendingPathComponent("v1/attachments"),
+                                                 resolvingAgainstBaseURL: false)
+            else { throw AttachmentFetchError.notHTTP }
+            components.queryItems = [URLQueryItem(name: "profile", value: profile),
+                                     URLQueryItem(name: "path", value: path)]
             guard let built = components.url else { throw AttachmentFetchError.notHTTP }
             url = built
         }

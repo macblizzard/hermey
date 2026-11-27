@@ -12,6 +12,7 @@
 //!     Those three routes carry no device credential, so they must never be reachable through
 //!     `tailscale serve`: the extension and the sign-in skill both run on this host.
 
+mod attachment_refs;
 mod attachments;
 mod audit;
 mod auth;
@@ -665,7 +666,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         )
         .route(
             "/v1/attachments",
+            // POST is an upload; GET is the other half — the bytes behind a reference a transcript
+            // carries (`?profile=&path=`), which is how a second device sees a photo that was
+            // attached on a third. See attachment_refs.rs for the scope rules.
             post(routes::upload_attachment)
+                .get(attachment_refs::attachment_by_reference)
                 // Body ceiling enforced by the framework, so an oversized upload is refused before
                 // it is buffered into memory.
                 .layer(axum::extract::DefaultBodyLimit::max(routes::MAX_ATTACHMENT_BYTES + 1024)),

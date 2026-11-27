@@ -194,13 +194,21 @@ class NothingRasterisesOrReadsInABody(unittest.TestCase):
     """A body pass must not touch the disk. It happens 25 times a second while a turn streams."""
 
     def test_the_row_does_not_join_the_vault_in_its_body(self) -> None:
+        # A body pass may not parse a reference or read a cache: the join moved from "read the
+        # picture's bytes off the disk" to "parse the host's path", and both belong off the body.
+        # The two halves are separate properties now — what this device sent, and what the host
+        # stored — so neither one has to do the other's work.
         body = member(ROW, "private var bubbleAttachments: [SentAttachment] {")
-        self.assertNotIn("referenceAttachments", body,
-                         "the reference join reads picture bytes; it cannot run in a body")
-        self.assertIn("resolvedAttachments", body)
+        for forbidden in ("referenceAttachments", "AttachmentImageStore", "AttachmentByteCache"):
+            self.assertNotIn(forbidden, body,
+                             "the reference join cannot run in a body")
+        self.assertIn("entry.attachments", body,
+                      "the body only hands over what this device already holds")
         resolver = member(ROW, "private func resolveReferencedAttachments() async {")
         self.assertIn("Task.detached", resolver)
+        self.assertIn("MessageRefs.attachments(in: entry.text)", resolver)
         self.assertIn(".task(id: entry.id) { await resolveReferencedAttachments() }", ROW)
+        self.assertIn("@State private var resolvedAttachments: [MessageAttachment] = []", ROW)
 
     def test_the_vault_memoises_its_reads_and_can_run_off_main(self) -> None:
         self.assertIn("public static func decorated(_ entries: [TranscriptEntry],", VAULT)

@@ -28,11 +28,10 @@ struct MobileTranscriptRow: View {
     var running: Set<String> = []
     @EnvironmentObject private var app: AppEnvironment
     @State private var showingSelection = false
-    /// Pictures fetched back from the host, by attachment name.
-    @State private var fetchedImages: [String: Data] = [:]
-    /// The host's `@image:` / `@file:` references joined to bytes this device holds, resolved once
-    /// per row off the main actor (see `resolveReferencedAttachments`).
-    @State private var resolvedAttachments: [SentAttachment] = []
+    /// The host's `@image:` / `@file:` references for this row, resolved once per row off the main
+    /// actor. A body pass happens every 40 ms while a turn streams, and a parse (like the disk read
+    /// it replaced) has no business in one.
+    @State private var resolvedAttachments: [MessageAttachment] = []
     /// The pictures the viewer is showing, if any.
     @State private var viewingImage: ViewedGallery?
     /// This row's markdown, parsed once per text rather than once per body pass.
@@ -129,8 +128,8 @@ struct MobileTranscriptRow: View {
             }
         )
         .onPreferenceChange(RowFrameKey.self) { rowFrame = $0 }
-        // Once per row, off the main actor: the reference join is a disk read, and a body pass
-        // must never be one. `id: entry.id` keeps it to the message this row actually draws.
+        // Once per row, off the main actor: a body pass must never be a parse, let alone a read.
+        // `id: entry.id` keeps it to the message this row actually draws.
         .task(id: entry.id) { await resolveReferencedAttachments() }
         .popover(isPresented: $showingActions,
                  attachmentAnchor: .point(anchorPoint),
@@ -495,10 +494,30 @@ struct MobileTranscriptRow: View {
             VStack(alignment: .trailing, spacing: 6) {
                 // What was sent with the words: pictures as pictures, documents as rows that open.
                 // Without this the chat looked like the attachment had never gone anywhere.
-                // Pictures the row's own memory holds, or — after a relaunch — the references the
-                // host stored, looked up in the image cache by the name it quotes.
-                if !bubbleAttachments.isEmpty {
+                //
+                // Two sources, and they are different questions. `entry.attachments` is what *this*
+                // device sent and still holds. The references are what the host stored, which is all
+                // a *different* device ever sees — the reason a photo taken on this phone shows up
+                // on the Mac at all. Both go through the same renderer, because the reference is
+                // the same string whichever device wrote it.
+                if !entry.attachments.isEmpty {
                     sentAttachments
+                } else if !resolvedAttachments.isEmpty {
+                    // The closures are this row's own methods: an escaping closure may not reach a
+                    // view's properties without `self.`, and the phone's two verbs (its viewer, its
+                    // share sheet) are worth one place each.
+                    ReferenceAttachmentsView(
+                        attachments: resolvedAttachments,
+                        profile: attachmentProfile,
+                        // Memory only: a disk read here would be one in a body pass, and a body pass
+                        // happens 25 times a second while a turn streams.
+                        cachedBytes: { reference in AttachmentByteCache.data(for: reference.id) },
+                        load: loadReference,
+                        onOpenImage: showPicture,
+                        onOpenFile: showFile,
+                        thumbnailWidth: 210,
+                        thumbnailHeight: 158)
+                        .frame(maxWidth: .infinity, alignment: .trailing)
                 }
                 // An attachment-only send has no sentence left once the references are stripped:
                 // the pictures and the clock are the whole bubble.
@@ -509,34 +528,57 @@ struct MobileTranscriptRow: View {
         .frame(maxWidth: .infinity, alignment: .trailing)
     }
 
-    /// Everything the bubble should draw for this message.
+    /// What this device sent, which is the half that carries bytes in hand.
     ///
-    /// A row with no attachments of its own falls back to the host's `@image:` / `@file:`
-    /// references, which are resolved **once, off the main actor**, into `resolvedAttachments`.
-    /// This used to be computed inline: every body pass of every user row read each referenced
-    /// picture's bytes off the disk on the main thread, and a row is rebuilt on every body pass —
-    /// including the 25 a second a streaming turn causes (reported 2026-11-25: opening a bot froze
-    /// for 15–20 s and a second tap crashed the app).
-    private var bubbleAttachments: [SentAttachment] {
-        entry.attachments.isEmpty ? resolvedAttachments : entry.attachments
-    }
+    /// The other half is `resolvedAttachments`: whatever this device did not send, the host stores
+    /// as a path (`@image:…`, `@file:…`, the `📎` block), and that path is the only thing a *second*
+    /// device has. `MessageRefs.attachments` is the one parser both shells use.
+    private var bubbleAttachments: [SentAttachment] { entry.attachments }
 
-    /// The reference join, done once per row.
+    /// The reference parse, off the main actor and once per row.
     private func resolveReferencedAttachments() async {
         guard entry.attachments.isEmpty, entry.role == .user else { return }
         let entry = self.entry
         let resolved = await Task.detached(priority: .userInitiated) {
-            entry.referenceAttachments
+            MessageRefs.attachments(in: entry.text).attachments
         }.value
         guard !resolved.isEmpty else { return }
         resolvedAttachments = resolved
+    }
+
+    /// The profile a reference belongs to: this row's bot, or the one on screen when the row has
+    /// none of its own. The host resolves a path inside *this* profile, so a wrong one is a 404.
+    private var attachmentProfile: String {
+        botID.isEmpty ? (app.model.selectedBotID ?? "") : botID
+    }
+
+    /// One attachment's bytes: the caches, then the host, through the route that resolves a
+    /// reference inside this bot's profile.
+    private func loadReference(_ reference: MessageAttachment) async throws -> Data {
+        let model = app.model
+        let profile = attachmentProfile
+        return try await AttachmentReferenceReader.bytes(for: reference, profile: profile) { location in
+            try await model.attachmentFile(for: location)
+        }
+    }
+
+    /// A picture the host had: the phone's viewer, on that one picture.
+    private func showPicture(_ reference: MessageAttachment, data: Data) {
+        viewingImage = ViewedGallery(items: [ImageViewer.Item(data: data, name: reference.name)],
+                                     startIndex: 0)
+    }
+
+    /// A file the host had: the system share sheet, which is what every other file row here opens
+    /// with (it offers Quick Look among its actions).
+    private func showFile(_: MessageAttachment, url: URL) {
+        MobileAttachmentShare.present(url)
     }
 
     /// Thumbnails arrive with the message, in the order they were attached.
     private var sentAttachments: some View {
         VStack(alignment: .trailing, spacing: 4) {
             ForEach(bubbleAttachments.filter { $0.isImage }) { attachment in
-                if let data = attachment.imageData ?? fetchedImages[attachment.name] {
+                if let data = attachment.imageData {
                     // A tap on a picture opens it: the thumbnail promises the full image is here.
                     // The whole message's pictures go with it, so the viewer can page.
                     Button {
@@ -562,10 +604,10 @@ struct MobileTranscriptRow: View {
                     .accessibilityHint("Opens the image")
                     .hermeyFocusQuiet()
                 } else {
-                    // The host holds the picture; ask for it once per bubble. Until it arrives —
-                    // or if this device cannot reach the host — the file is named, not invented.
+                    // This device does not hold the bytes: the reference branch above draws it, from
+                    // the host, with a named chip until they arrive. Here the file is named, not
+                    // invented.
                     attachmentChip(attachment.name)
-                        .task(id: attachment.name) { await fetchImage(attachment.name) }
                 }
             }
             ForEach(bubbleAttachments.filter { !$0.isImage }) { attachment in
@@ -582,7 +624,7 @@ struct MobileTranscriptRow: View {
         bubbleAttachments
             .filter { $0.isImage }
             .compactMap { attachment in
-                guard let data = attachment.imageData ?? fetchedImages[attachment.name] else { return nil }
+                guard let data = attachment.imageData else { return nil }
                 return (attachment: attachment, data: data)
             }
     }
@@ -655,15 +697,6 @@ struct MobileTranscriptRow: View {
         let model = app.model
         attachments.loader = { location in try await model.attachmentFile(for: location) }
         attachments.present = { url in MobileAttachmentShare.present(url) }
-    }
-
-    /// Bytes fetched from the host, by attachment name — one dictionary per bubble.
-    private func fetchImage(_ name: String) async {
-        guard fetchedImages[name] == nil else { return }
-        guard let profile = app.model.selectedBotID else { return }
-        if let data = await app.attachmentImage(named: name, profile: profile) {
-            fetchedImages[name] = data
-        }
     }
 
     private var bubbleText: some View {

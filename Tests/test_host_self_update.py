@@ -362,7 +362,9 @@ class TheNamesAgreeAcrossTheTwoLanguages(unittest.TestCase):
             self.assertIn(check, body)
 
     def test_the_version_was_bumped_and_the_docs_say_so(self) -> None:
-        self.assertIn('version = "0.8.25"', CARGO)
+        # Every bump lands here, by design: the release tag and the version the About row reads
+        # come from this number, and a stale pin is how the two drift apart.
+        self.assertIn('version = "0.8.26"', CARGO)
         self.assertIn("## Self-update — `GET/POST /v1/update`", DOCS)
         for phrase in ("checksum", "rolled-back", "pending", "healthy",
                        "HERMEYD_SELF_UPDATE", "SHA256SUMS"):

@@ -95,6 +95,10 @@ struct TranscriptRowView: View {
     /// One file fetch per row: a PDF is downloaded once even with two rows naming it, and the
     /// "not there yet" state survives a re-render.
     @StateObject private var attachments = AttachmentOpenCoordinator()
+    /// The host's `@image:` / `@file:` references for this row, resolved once per row off the main
+    /// actor — a body pass happens 25 times a second while a turn streams, and a parse has no
+    /// business in one.
+    @State private var resolvedAttachments: [MessageAttachment] = []
     /// What the host stores for each bot's face, injected once at the app's root. Read here only for
     /// a bot-to-bot message's sender, whose bubble is drawn in that bot's colour.
     @Environment(\.botAvatars) private var avatarLibrary
@@ -136,6 +140,7 @@ struct TranscriptRowView: View {
             // taken from the window's event stream, so selection and the glyphs still work.
             content
                 .overlay { MessageContextMenu(items: menuItems, anchor: menuAnchor) }
+                .task(id: entry.id) { await resolveReferencedAttachments() }
                 .onAppear {
                     wireAttachmentOpener()
                     // The row's menu becomes reachable from the menu bar (⌘⇧M) for as long as the
@@ -286,11 +291,15 @@ struct TranscriptRowView: View {
             Spacer(minLength: Geometry.conversationMeasure * 0.18)
 
             VStack(alignment: .trailing, spacing: 6) {
-                // The pictures that went with the words. The host's transcript carries no
-                // attachment metadata, so a message's own memory is all there is to draw. A file
-                // that is not a picture gets a row instead of a thumbnail: its type's symbol, its
-                // name, its size, and a press that opens it in Quick Look.
-                if !bubbleAttachments.isEmpty {
+                // What came with the words, in the one order that matters: bytes this device holds
+                // draw themselves, and a reference the host holds is resolved through the route that
+                // serves it. A file that is not a picture gets a row instead of a thumbnail: its
+                // type's symbol, its name, its size, and a press that opens it.
+                //
+                // This split is the whole cross-device fix. A photograph sent from the phone is not
+                // in this Mac's caches — only `@image:/…/upload_x.jpg` is — so before this the row
+                // had nothing to draw and the chat looked like the attachment never travelled.
+                if !entry.attachments.isEmpty {
                     VStack(alignment: .trailing, spacing: 6) {
                         if !viewablePictures.isEmpty {
                             HStack(spacing: 6) {
@@ -301,10 +310,24 @@ struct TranscriptRowView: View {
                                 }
                             }
                         }
-                        ForEach(bubbleAttachments.filter { !$0.isImage || $0.imageData == nil }) { attachment in
+                        ForEach(entry.attachments.filter { !$0.isImage }) { attachment in
                             sentFileRow(attachment)
                         }
                     }
+                } else if !resolvedAttachments.isEmpty {
+                    // The closures call this row's own methods: an escaping closure may not reach
+                    // a view's properties without `self.`, and a method is also where the two verbs
+                    // are documented.
+                    ReferenceAttachmentsView(
+                        // Memory only: a disk read here would be one in a body pass. `loadReference`
+                        // does the disk (and the host) off the main actor and fills that cache.
+                        attachments: resolvedAttachments,
+                        profile: bot,
+                        cachedBytes: { reference in AttachmentByteCache.data(for: reference.id) },
+                        load: loadReference,
+                        onOpenImage: showPicture,
+                        onOpenFile: showFile)
+                        .frame(maxWidth: .infinity, alignment: .trailing)
                 }
 
                 if !entry.displayText.isEmpty {
@@ -418,10 +441,44 @@ struct TranscriptRowView: View {
         .hermeyFocusQuiet()
     }
 
-    /// Pictures the row remembers, or the host's references looked up in the image cache.
-    private var bubbleAttachments: [SentAttachment] {
-        entry.attachments.isEmpty ? entry.referenceAttachments : entry.attachments
+    /// The host's references, parsed off the main actor and once per row.
+    ///
+    /// `entry.attachments` is what *this* device sent and still holds; the references are what any
+    /// device can see, and they are the only reason a photo attached on the phone appears here.
+    private func resolveReferencedAttachments() async {
+        guard entry.role == .user, entry.attachments.isEmpty else { return }
+        let entry = self.entry
+        let resolved = await Task.detached(priority: .userInitiated) {
+            MessageRefs.attachments(in: entry.text).attachments
+        }.value
+        guard !resolved.isEmpty else { return }
+        resolvedAttachments = resolved
     }
+
+    /// One attachment's bytes: the caches, then the host, through the route that resolves a
+    /// reference inside this bot's profile.
+    private func loadReference(_ reference: MessageAttachment) async throws -> Data {
+        try await AttachmentReferenceReader.bytes(for: reference, profile: bot) { location in
+            guard let open = openAttachmentFile else {
+                throw AttachmentFetchError.notConfigured
+            }
+            return try await open(location)
+        }
+    }
+
+    /// A picture the host had: the same viewer the row's own pictures open, on that one picture.
+    private func showPicture(_ reference: MessageAttachment, data: Data) {
+        viewingImage = ViewedGallery(items: [ImageViewer.Item(data: data, name: reference.name)],
+                                     startIndex: 0)
+    }
+
+    /// A file the host had: Quick Look, which is what every other file row on this Mac opens with.
+    private func showFile(_: MessageAttachment, url: URL) {
+        MacAttachmentQuickLook.shared.show(url)
+    }
+
+    /// Pictures the row remembers, in the order they were attached.
+    private var bubbleAttachments: [SentAttachment] { entry.attachments }
 
     /// The pictures of this message the row can actually draw, in the order they were attached.
     private var viewablePictures: [SentAttachment] {

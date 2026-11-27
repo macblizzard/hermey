@@ -196,21 +196,6 @@ final class AppEnvironment: ObservableObject {
         }))
     }
 
-    /// The bytes of an attachment the host holds, cached on disk so the chat reopens without a
-    /// round trip and keeps working offline once it has seen the picture.
-    func attachmentImage(named name: String, profile: String) async -> Data? {
-        if let cached = AttachmentImageStore.data(named: name) { return cached }
-        guard let credentials = await box.credentials() else { return nil }
-        let service = AttachmentImageService(baseURL: credentials.host.baseURL, freshTicket: {
-            try await BotIconService.mintTicket(baseURL: credentials.host.baseURL,
-                                                deviceID: credentials.host.deviceID,
-                                                refreshToken: credentials.token)
-        })
-        guard let data = try? await service.load(profile: profile, name: name) else { return nil }
-        AttachmentImageStore.save(data, as: name)
-        return data
-    }
-
     // MARK: - Bot icon cache
 
     /// Faces are tiny facts, so they live in `UserDefaults` per host: a re-pair with a different

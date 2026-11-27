@@ -7,33 +7,24 @@ import Foundation
 /// the agent needs a path to open. Sent back as a transcript row, those lines are host bookkeeping:
 /// on screen they are an absolute path where a thumbnail belongs, and they also break the vault's
 /// text matching, because the stored text no longer equals what the user typed.
+///
+/// The parse itself lives in `MessageAttachments.swift`, next to the attachment it produces: a
+/// row needs more than the path (the type and size the `📎` block spells out), and two parsers for
+/// one message shape is how the two shells drift apart.
 public enum MessageRefs {
 
-    private static let markers = ["@image:", "@file:"]
+    /// The two markers a reference line can start with.
+    static let markers = ["@image:", "@file:"]
 
     /// Splits a stored message into what the user wrote and the references the host added.
     public static func split(_ text: String) -> (body: String, refs: [String]) {
-        var body: [String] = []
-        var refs: [String] = []
-        for line in text.split(separator: "\n", omittingEmptySubsequences: false) {
-            let trimmed = line.trimmingCharacters(in: .whitespaces)
-            if let marker = markers.first(where: { trimmed.hasPrefix($0) }) {
-                let path = String(trimmed.dropFirst(marker.count))
-                    .trimmingCharacters(in: .whitespaces)
-                if !path.isEmpty { refs.append(path) }
-            } else {
-                body.append(String(line))
-            }
-        }
-        // The references were appended after the words, so what is left can end in blank lines.
-        let joined = body.joined(separator: "\n")
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-        return (joined, refs)
+        let scan = attachments(in: text)
+        return (scan.body, scan.attachments.map(\.path))
     }
 
     /// The message as the user would have written it.
     public static func display(_ text: String) -> String {
-        let body = split(text).body
+        let body = attachments(in: text).body
         // The host appends an attachment's extracted text under a `--- attachment:` line, after
         // whatever was typed — that block belongs to the prompt, not the bubble. Everything from
         // the first marker on is host-added, so the typed words are everything before it.
