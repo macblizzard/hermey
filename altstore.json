@@ -22,14 +22,14 @@
       "screenshots": [],
       "versions": [
         {
-          "version": "0.1.694",
-          "buildVersion": "694",
-          "date": "2026-11-27T12:23:50Z",
-          "localizedDescription": "The update prompt arrives on its own: every launch and return to the front asks the feed, and Check now can no longer say up to date when a newer build exists. The row now names what happened instead of one sentence for six outcomes.",
-          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.694/Hermey-0.1.694-b694.ipa",
-          "size": 6333389,
+          "version": "0.1.695",
+          "buildVersion": "695",
+          "date": "2026-11-27T15:53:44Z",
+          "localizedDescription": "Attachments now travel between your devices: a photo sent from the phone draws as a thumbnail on the Mac (tap for full size), a file as a chip with its name, type and size, in both directions. The host serves them itself, scoped to your profile. Needs hermeyd 0.8.26.",
+          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.695/Hermey-0.1.695-b695.ipa",
+          "size": 6358907,
           "minOSVersion": "17.0",
-          "sha256": "da66c9db88fe1cb68059165d91435cca00804005abb546794a1e4c62a773629d"
+          "sha256": "742173402db3f2921692dcfc635f13be06c6b3a3d5b155aa178d77deba5ae400"
         }
       ],
       "appPermissions": {
@@ -43,10 +43,10 @@
   ],
   "news": [
     {
-      "title": "Hermes 0.1.694 (694)",
-      "identifier": "hermes-0.1.694-694",
-      "caption": "The update prompt arrives on its own: every launch and return to the front asks the feed, and Check now can no longer say up to date when a newer build exists. The row now names what happened instead of one sentence for six outcomes.",
-      "date": "2026-11-27T12:23:50Z",
+      "title": "Hermes 0.1.695 (695)",
+      "identifier": "hermes-0.1.695-695",
+      "caption": "Attachments now travel between your devices: a photo sent from the phone draws as a thumbnail on the Mac (tap for full size), a file as a chip with its name, type and size, in both directions. The host serves them itself, scoped to your profile. Needs hermeyd 0.8.26.",
+      "date": "2026-11-27T15:53:44Z",
       "tintColor": "#9A9AA0"
     }
   ],
