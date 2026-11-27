@@ -9,6 +9,27 @@ from the repository's history and the published release pages.
 
 ## [Unreleased]
 
+## [0.1.689] — 2026-11-27
+
+### Added
+- **Voice conversations, hands-free.** One tap on the waveform in the composer opens the microphone and keeps it
+  open: you speak, your words appear as a message, the answer is spoken back, and it listens again. Talking over
+  a reply stops it and becomes the next turn, a spoken "stop" ends the loop, and the microphone is released on
+  every exit — toggle off, leaving the bot, backgrounding, a call taking the session, or a failed request.
+  The device does the endpointing (600 ms of silence ends an utterance, a cough is not a turn); the host
+  transcribes with Groq and speaks with ElevenLabs, sentence by sentence, so the first words arrive while the
+  rest is still being generated. Built on the same machinery as Hermes' own voice mode: a rolling-floor barge
+  detector with quiet-room calibration, a Whisper-on-silence filter, a strict stop phrase, a self-echo guard and
+  markdown-to-prose projection.
+
+### Fixed
+- **Updating a bot's avatar reaches its pet.** A save of a drawn avatar left the desktop pet showing the face it
+  was created with, because only classic-face changes refreshed it; the pet now follows the saved avatar. (It
+  follows the save, not the unsaved draft — in-window surfaces follow the draft, surfaces outside the window
+  follow the save.)
+- **The glass halo no longer bands**, and hermeyd is 0.8.23 with a published tag for this release.
+
+
 ## [0.1.688] — 2026-11-27
 
 ### Fixed
