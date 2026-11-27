@@ -22,14 +22,14 @@
       "screenshots": [],
       "versions": [
         {
-          "version": "0.1.690",
-          "buildVersion": "690",
-          "date": "2026-11-27T02:19:33Z",
-          "localizedDescription": "iPhone voice fix candidate: the hands-free control is a waveform in every state, a failure now prints its reason instead of 'Voice stopped', and every step of the start path is logged under voice.",
-          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.690/Hermey-0.1.690-b690.ipa",
-          "size": 6307331,
+          "version": "0.1.691",
+          "buildVersion": "691",
+          "date": "2026-11-27T10:08:36Z",
+          "localizedDescription": "iPhone voice fix: the hands-free loop now uses the same audio session mode as the dictation mic that works on your phone, tunes its listening floor for a quiet input, and logs block levels so a silent stream is visible. Plus a real hermeyd 0.8.24.",
+          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.691/Hermey-0.1.691-b691.ipa",
+          "size": 6308428,
           "minOSVersion": "17.0",
-          "sha256": "27514570d65e0b6d49c99aab35a9c62f651e45ff24867313383ed414dad09d11"
+          "sha256": "983936643b7eaeb680f8d1eb81ea95f4193bc81576bca32b0c5024c0c75f0f1f"
         }
       ],
       "appPermissions": {
@@ -43,10 +43,10 @@
   ],
   "news": [
     {
-      "title": "Hermes 0.1.690 (690)",
-      "identifier": "hermes-0.1.690-690",
-      "caption": "iPhone voice fix candidate: the hands-free control is a waveform in every state, a failure now prints its reason instead of 'Voice stopped', and every step of the start path is logged under voice.",
-      "date": "2026-11-27T02:19:33Z",
+      "title": "Hermes 0.1.691 (691)",
+      "identifier": "hermes-0.1.691-691",
+      "caption": "iPhone voice fix: the hands-free loop now uses the same audio session mode as the dictation mic that works on your phone, tunes its listening floor for a quiet input, and logs block levels so a silent stream is visible. Plus a real hermeyd 0.8.24.",
+      "date": "2026-11-27T10:08:36Z",
       "tintColor": "#9A9AA0"
     }
   ],
