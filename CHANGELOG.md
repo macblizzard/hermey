@@ -7,6 +7,25 @@ Each release's section may carry both its release notes and the per-change entri
 recorded as the work landed; entries before 0.1.610 were given their version headings
 from the repository's history and the published release pages.
 
+## [0.1.692] — 2026-11-27
+
+### Changed
+- **One audio control in the composer.** A tap starts the hands-free conversation, a hold dictates one
+  message into the draft; the first time you see it, one dismissible line says so. The second glyph is gone.
+- **Voice is on the keyboard.** Settings ▸ Shortcuts gains **⌥⌘V** (start/stop the conversation) and
+  **⌥⌘D** (dictate into the draft), both rebindable like every other row.
+
+### Fixed
+- **The iPhone's voice loop can now finish a sentence.** The last build fixed its ears by moving to the same
+  audio-session mode as the working dictation mic; this fixes the other half — the end-of-speech level sat
+  below the room's own noise, so an utterance never ended and no turn was ever sent. The level is now derived
+  between the measured floor and speech, and the log names what it used.
+- **The update prompt goes straight to the newest build.** The feed is fetched cache-busted (GitHub Pages
+  answers with a 10-minute edge copy and ignores `no-cache`), and an offer is always the newest installable
+  build — never the next one above what you have, so a device several versions behind upgrades in one hop.
+- **`hermeyd` 0.8.25** — the release tag now only points at a commit whose manifest matches it (0.8.24 was
+  published from a commit that still said 0.8.23, which is why the host installed it and rolled itself back).
+
 ## [Unreleased]
 
 ## [0.1.691] — 2026-11-27
