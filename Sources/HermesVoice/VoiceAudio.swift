@@ -143,6 +143,12 @@ public final class VoiceCaptureEngine {
     private var voicedBlocks = 0
     private var blockCount = 0
     private var isRunning = false
+    /// The start attempt that owns this engine. `start()` is async (the permission prompt is an
+    /// await), so a stop followed by a new start can run two attempts against one engine; every
+    /// resumption past an await compares this token, and `stop()` invalidates it. Without it an
+    /// abandoned attempt could install a tap or tear down the microphone of the attempt that
+    /// replaced it — the UI says Listening over a dead stream.
+    private var startEpoch = UUID()
     /// Diagnostics only: was a buffer ever handed to us, and did the first speech start already
     /// make it into the log. Reset by every start, so a second conversation logs its own firsts.
     private var sawFirstRawBuffer = false
@@ -215,6 +221,8 @@ public final class VoiceCaptureEngine {
             VoiceLog.note("start: already running")
             return
         }
+        let epoch = UUID()
+        startEpoch = epoch
         // macOS terminates the process on first capture input without this string, and iOS only
         // shows the prompt when the key is present — so check it before touching AVFoundation.
         guard Bundle.main.object(forInfoDictionaryKey: "NSMicrophoneUsageDescription") as? String != nil else {
@@ -223,7 +231,20 @@ public final class VoiceCaptureEngine {
         guard await Self.requestMicrophonePermission() else {
             throw failed(.microphoneDenied)
         }
+        guard startEpoch == epoch else {
+            // The permission prompt was up when the loop was stopped, or a newer start took over.
+            // Either way this attempt owns nothing: it must not activate, install a tap, or stop
+            // the capture that does.
+            VoiceLog.note("start: abandoned at the permission boundary")
+            return
+        }
         try VoiceAudioSession.activate()
+        guard startEpoch == epoch else {
+            // A stop or a newer start happened during activation. A newer attempt owns the
+            // session now; if there is none, `stop()` has already released it.
+            VoiceLog.note("start: abandoned after activating the session")
+            return
+        }
         try beginStreaming()
         VoiceLog.note("start: microphone open")
     }
@@ -245,6 +266,9 @@ public final class VoiceCaptureEngine {
     /// exit: toggle-off, leaving the bot, backgrounding, a failed request.
     @MainActor
     public func stop() {
+        // Invalidate any start still sitting in the permission prompt before closing: its
+        // resumption must see that it no longer owns this engine.
+        startEpoch = UUID()
         teardown()
         VoiceAudioSession.deactivate()
     }
@@ -543,10 +567,15 @@ public final class VoiceCaptureEngine {
 
         case .thinking, .speaking:
             let trip = detector.feed(rms: rms, playing: phase == .speaking)
-            if let trip {
+            if let trip, !collecting {
                 // Trip: report it immediately so playback stops before anything else happens, then
                 // keep rolling from the pre-roll buffer — the words that tripped the detector are
                 // already in it, so the utterance starts at the first syllable, not at the trip.
+                //
+                // Once only: the detector latches at the trip, and `!collecting` is the second
+                // guard. Re-seeding here on a later block would cut the question back to its last
+                // 1.2 s every 30 ms, which is what a barge that re-trips 33 times a second sounds
+                // like from the other side.
                 collected = preRoll.flatMap { $0 }
                 collecting = true
                 bargedIn = true
@@ -567,8 +596,9 @@ public final class VoiceCaptureEngine {
                     let voiced = Double(voicedBlocks) * config.blockSeconds
                     let keep = voicedBlocks >= config.minimumUtteranceBlocks
                     voicedBlocks = 0
+                    let wasBarge = bargedIn
                     bargedIn = false
-                    logFromAudioThread("endpoint: \(String(format: "%.2f", Double(audio.count) / config.sampleRate)) s after \(trip == nil ? "a turn" : "barge-in"), \(String(format: "%.2f", voiced)) s voiced, keep \(keep), silence \(Int(levels.silence))")
+                    logFromAudioThread("endpoint: \(String(format: "%.2f", Double(audio.count) / config.sampleRate)) s after \(wasBarge ? "barge-in" : "a turn"), \(String(format: "%.2f", voiced)) s voiced, keep \(keep), silence \(Int(levels.silence))")
                     events.append(.utterance(VoiceUtterance(wav: VoiceWAV.encode(samples: audio, sampleRate: Int(config.sampleRate)),
                                                             duration: Double(audio.count) / config.sampleRate,
                                                             voicedDuration: voiced),

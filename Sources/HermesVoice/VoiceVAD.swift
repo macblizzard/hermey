@@ -255,6 +255,13 @@ public struct VoiceBargeDetector {
     private var ambient: [Double] = []
     private var recentAbove: [Bool] = []
     private var graceRemaining = 0
+    /// A trip is a latch, not an edge. `recentAbove` stays saturated for as long as the person
+    /// keeps talking, so without this every 30 ms block would report the same trip again — ~33
+    /// `.bargeIn` events a second, each one re-seeding the collection from the pre-roll.
+    private var latched = false
+    /// Consecutive blocks below the endpoint boundary. A latch opens only on the same quiet run
+    /// that ends a collection (`endpointSilenceBlocks`), never on a momentary dip.
+    private var latchQuietRun = 0
     private var wasPlaying = false
     private var playbackSeen = false
     private var blocksSincePlayback = 10_000
@@ -269,6 +276,20 @@ public struct VoiceBargeDetector {
     public mutating func feed(rms: Double, playing: Bool) -> VoiceBargePhase? {
         if !isFloorLocked && !calibrate(rms: rms, playing: playing) { return nil }
         trackPlayback(playing)
+        if latched {
+            // Sustained speech over a reply is one barge, not thirty-three a second. The latch
+            // opens only after the room has been quiet for the same run the collection endpoints
+            // against, so a new utterance a moment later can trip normally.
+            let silence = config.listeningLevels(floor: quietFloor).silence
+            latchQuietRun = rms < silence ? latchQuietRun + 1 : 0
+            if latchQuietRun >= config.endpointSilenceBlocks {
+                latched = false
+                latchQuietRun = 0
+                recentAbove.removeAll()
+                graceRemaining = 0
+            }
+            return nil
+        }
         var trigger = max(quietFloor * config.bargeMultiplier,
                           playing ? config.playbackMinimumTrigger : config.listeningTriggerFloor)
         trigger = min(trigger, config.triggerCeiling)
@@ -287,6 +308,8 @@ public struct VoiceBargeDetector {
         recentAbove.append(above)
         while recentAbove.count > config.sustainedBlocks { recentAbove.removeFirst() }
         guard above, recentAbove.filter({ $0 }).count >= config.tripBlocks else { return nil }
+        latched = true
+        latchQuietRun = 0
         return playing ? .playback : .generation
     }
 
@@ -298,6 +321,8 @@ public struct VoiceBargeDetector {
     public mutating func resetWindow() {
         recentAbove.removeAll()
         graceRemaining = 0
+        latched = false
+        latchQuietRun = 0
         wasPlaying = false
         playbackSeen = false
         blocksSincePlayback = 10_000

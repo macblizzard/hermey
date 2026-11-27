@@ -318,7 +318,7 @@ struct ConversationScreen: View {
         // and the text is the host's own, not something re-read from the screen.
         .onChange(of: model.lastCompletion) { _, completion in
             guard let completion else { return }
-            voiceLoop.noteTurnCompleted(text: completion.text)
+            voiceLoop.noteTurnCompleted(session: completion.session, text: completion.text)
         }
         // Backgrounding a phone must close the microphone: iOS will suspend the capture anyway, and
         // a loop that thinks it is listening while the stream is dead is worse than one that stops.
@@ -1620,11 +1620,15 @@ struct ConversationScreen: View {
                 try await transport.synthesize(text)
             },
             sendTurn: { text in
+                // Captured before the send: the completion this turn produces will name this
+                // session, and the loop speaks only a completion that matches it.
+                let session = model.selectedSessionID
                 // Appended, never replacing: anything typed while the microphone was open belongs
                 // to the same message.
                 let existing = model.draft.trimmingCharacters(in: .whitespacesAndNewlines)
                 model.draft = existing.isEmpty ? text : existing + " " + text
                 Task { await model.send() }
+                return session
             },
             interruptTurn: {
                 Task { await model.interrupt() }

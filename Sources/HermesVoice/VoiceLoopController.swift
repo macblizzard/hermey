@@ -13,8 +13,11 @@ public struct VoiceLoopWiring {
     /// Synthesize one sentence (ElevenLabs through `POST /v1/voice/synthesize`).
     public var synthesize: (String) async throws -> Data
     /// Put a finished transcript into the conversation as a turn. The shell owns this because the
-    /// draft, the send button and the session are the shell's.
-    public var sendTurn: (String) -> Void
+    /// draft, the send button and the session are the shell's. It returns the session the turn was
+    /// sent to — the only identity the host's completion event carries — so a reply can be matched
+    /// to the turn that asked for it. `nil` means the shell could not name the conversation, and a
+    /// reply that cannot be identified is never spoken.
+    public var sendTurn: (String) -> String?
     /// Stop the turn in flight — used when the user talks over a generation.
     public var interruptTurn: () -> Void
     /// False when there is no pairing to talk to, so the loop refuses to open the microphone.
@@ -22,7 +25,7 @@ public struct VoiceLoopWiring {
 
     public init(transcribe: @escaping (Data, String) async throws -> String,
                 synthesize: @escaping (String) async throws -> Data,
-                sendTurn: @escaping (String) -> Void,
+                sendTurn: @escaping (String) -> String?,
                 interruptTurn: @escaping () -> Void,
                 canRun: @escaping () -> Bool) {
         self.transcribe = transcribe
@@ -35,7 +38,7 @@ public struct VoiceLoopWiring {
     public static let unconfigured = VoiceLoopWiring(
         transcribe: { _, _ in throw VoiceLoopFailure.notConfigured },
         synthesize: { _ in throw VoiceLoopFailure.notConfigured },
-        sendTurn: { _ in },
+        sendTurn: { _ in nil },
         interruptTurn: {},
         canRun: { false }
     )
@@ -155,11 +158,18 @@ public final class VoiceLoopController: ObservableObject {
     /// True between "the turn was sent" and "its reply arrived". A completion that arrives when
     /// this is false is either a turn the user interrupted or another window's; neither is spoken.
     private var awaitingReply = false
+    /// The conversation the awaiting turn was sent to, as `sendTurn` reported it. A completion
+    /// carries only `session` and text, so this is the identity it must match: a typed message in
+    /// another session, or a reply that lands after the loop stopped, can never be mistaken for it.
+    private var sentSession: String?
     private var lastSpokenText = ""
     private var lastSpokenAt: Date?
     /// A turn the user cut into. Its completion is still on its way, and it must be neither spoken
     /// nor mistaken for the answer to the sentence that replaced it.
     private var interruptedTurn = false
+    /// The conversation that turn belonged to. The completion is consumed only if it names this
+    /// session, so another window's completion cannot clear the latch.
+    private var interruptedSession: String?
     /// The utterance spoken *over* an interrupted turn. It waits for that turn's completion so the
     /// two turns cannot cross: one reply in the transcript per thing he said.
     private var heldUtterance: VoiceUtterance?
@@ -168,6 +178,10 @@ public final class VoiceLoopController: ObservableObject {
     /// host answers an interrupt as a normal completion, so this only covers a completion that is
     /// lost — waiting forever would be the microphone open with nothing listening for a turn.
     static let interruptGraceSeconds: TimeInterval = 4
+    /// After the grace sends the held sentence, the cut turn's completion is still due. It is
+    /// swallowed if it arrives inside this window (the host emits it first, before the new turn's),
+    /// and after it the latch opens rather than risk refusing the new turn's real reply forever.
+    static let lostInterruptSeconds: TimeInterval = 12
 
     public init(config: VoiceVADConfig = VoiceVADConfig()) {
         capture = VoiceCaptureEngine(config: config)
@@ -219,6 +233,8 @@ public final class VoiceLoopController: ObservableObject {
         notice = nil
         heardText = nil
         awaitingReply = false
+        sentSession = nil
+        interruptedSession = nil
         lastSpokenText = ""
         lastSpokenAt = nil
         let current = UUID()
@@ -234,8 +250,14 @@ public final class VoiceLoopController: ObservableObject {
                 guard self.generation == current, self.state == .starting else {
                     // Stopped while the permission prompt was up. Worth a line: a start that is
                     // abandoned here looks exactly like one that never ran.
+                    //
+                    // Deliberately does not touch `capture`: this attempt no longer owns it. The
+                    // stop that abandoned it has already closed the engine, and a start that
+                    // replaced it owns the microphone now — an unconditional `capture.stop()`
+                    // here is what used to tear down the *new* conversation while its UI said
+                    // "Listening". The engine's own `startEpoch` check keeps a stale attempt from
+                    // installing a tap after this point as well.
                     VoiceLog.note("start: abandoned — the loop was stopped before the microphone opened")
-                    self.capture.stop()
                     return
                 }
                 VoiceLog.note("start: listening")
@@ -266,6 +288,7 @@ public final class VoiceLoopController: ObservableObject {
         let pending = keepingSpeech ? capture.finishCollecting() : nil
         generation = UUID()
         awaitingReply = false
+        sentSession = nil
         pipelineTask?.cancel()
         pipelineTask = nil
         watchdog?.cancel()
@@ -273,6 +296,7 @@ public final class VoiceLoopController: ObservableObject {
         interruptWatchdog?.cancel()
         interruptWatchdog = nil
         interruptedTurn = false
+        interruptedSession = nil
         heldUtterance = nil
         // Order matters: nothing may produce a turn from the audio still in flight, and playback
         // must be silent before the session is released or the tail is cut mid-word.
@@ -300,13 +324,23 @@ public final class VoiceLoopController: ObservableObject {
         stop(keepingSpeech: false)
     }
 
-    /// The host finished a turn. Only a turn this loop sent gets spoken, and only if it has not been
-    /// interrupted in the meantime.
-    public func noteTurnCompleted(text: String) {
-        if interruptedTurn {
+    /// The host finished a turn. Only a completion that names the conversation this loop sent its
+    /// turn to may be spoken, and only while that turn is the one still awaiting a reply.
+    ///
+    /// `session` is not decorative: the host's completion event carries no turn id, so the session
+    /// is the strongest identity available. A manually typed message (the composer stays editable
+    /// while the loop listens), another window's session, or a completion that lands after stop all
+    /// fail the comparison and are dropped.
+    public func noteTurnCompleted(session: String?, text: String) {
+        guard let session else {
+            VoiceLog.note("turn: completion dropped — it names no session")
+            return
+        }
+        if interruptedTurn, session == interruptedSession {
             // The cut turn ended. Speak nothing: whatever it had produced was already answered by
             // the interruption, and the sentence he spoke over it is the question now.
             interruptedTurn = false
+            interruptedSession = nil
             interruptWatchdog?.cancel()
             interruptWatchdog = nil
             if let held = heldUtterance {
@@ -317,8 +351,11 @@ public final class VoiceLoopController: ObservableObject {
             }
             return
         }
-        guard state == .thinking, awaitingReply else { return }
+        // A different session is another conversation's turn. It neither speaks here nor clears an
+        // interrupt this loop is still waiting out — only the cut turn's own completion may.
+        guard state == .thinking, awaitingReply, session == sentSession else { return }
         awaitingReply = false
+        sentSession = nil
         watchdog?.cancel()
         watchdog = nil
         let spoken = VoicePolicy.speechText(from: text)
@@ -365,12 +402,19 @@ public final class VoiceLoopController: ObservableObject {
         capture.isPlaybackActive = false
         pipelineTask?.cancel()
         pipelineTask = nil
-        if phase == .generation {
+        if phase == .generation, awaitingReply {
             // He is cutting into a turn that is still running: stop it before its reply can arrive
             // and be spoken over the new question. `interruptedTurn` is what stops that reply from
             // being spoken when its completion lands a moment later — the completion is the signal
             // that the cut turn is over, not an answer.
+            //
+            // Only when a turn of ours is actually in flight: between `deliver` and `sendTurn` the
+            // engine is already `.thinking` and `awaitingReply` is still false, and interrupting
+            // there would cut whatever turn the host is running (possibly one the user typed) for
+            // a turn this loop never sent.
             interruptedTurn = true
+            interruptedSession = sentSession
+            sentSession = nil
             awaitingReply = false
             watchdog?.cancel()
             watchdog = nil
@@ -382,7 +426,11 @@ public final class VoiceLoopController: ObservableObject {
     }
 
     /// One utterance → one turn.
-    private func deliver(_ utterance: VoiceUtterance) {
+    ///
+    /// `awaitingInterruptedCompletion` is true for the sentence the grace sends after a cut turn:
+    /// the cut turn's completion is still due, and the loop must keep swallowing it even though
+    /// this sentence is now the one waiting for a reply. Everything else starts clean.
+    private func deliver(_ utterance: VoiceUtterance, awaitingInterruptedCompletion: Bool = false) {
         guard state.ownsMicrophone else {
             VoiceLog.note("turn: dropped — the loop no longer owns the microphone")
             return
@@ -391,7 +439,8 @@ public final class VoiceLoopController: ObservableObject {
             VoiceLog.note("turn: dropped — the loop is still starting")
             return
         }
-        interruptedTurn = false
+        interruptedTurn = awaitingInterruptedCompletion
+        if !awaitingInterruptedCompletion { interruptedSession = nil }
         setState(.thinking, engine: .thinking)
         transcribe(utterance, how: .turn)
     }
@@ -468,15 +517,25 @@ public final class VoiceLoopController: ObservableObject {
                 self.heardText = text
                 switch how {
                 case .turn:
-                    self.awaitingReply = true
                     VoiceLog.note("turn: sent — “\(text)”")
-                    self.wiring.sendTurn(text)
+                    let identity = self.wiring.sendTurn(text)
+                    self.sentSession = identity
+                    guard identity != nil else {
+                        // The shell could not name the session, so no completion can be proven to
+                        // belong to this turn. Sending is still right; speaking an unidentified
+                        // reply is not. The reply appears in the transcript like any other.
+                        VoiceLog.note("turn: sent without a session identity — its reply will not be spoken")
+                        self.awaitingReply = false
+                        self.returnToListening()
+                        return
+                    }
+                    self.awaitingReply = true
                     self.startReplyWatchdog()
                 case .sendOnly:
                     // No watchdog and no `awaitingReply`: the loop is off, so the reply arrives as
                     // text in the conversation rather than being spoken into an empty room.
                     VoiceLog.note("turn: sent after stop — “\(text)”")
-                    self.wiring.sendTurn(text)
+                    _ = self.wiring.sendTurn(text)
                 }
             } catch {
                 guard self.generation == current else { return }
@@ -568,6 +627,11 @@ public final class VoiceLoopController: ObservableObject {
 
     /// The cut turn's completion never arrived: send the held sentence anyway rather than leaving
     /// it in a variable only a later event could read.
+    ///
+    /// The held sentence goes, but the cut turn's completion is still due — so the interrupt latch
+    /// stays set. The old code cleared it here and then spoke that late completion as the new
+    /// turn's answer, which is exactly the crossing this exists to prevent. A second watchdog opens
+    /// the latch if the completion is genuinely lost.
     private func startInterruptWatchdog() {
         interruptWatchdog?.cancel()
         let current = generation
@@ -575,9 +639,26 @@ public final class VoiceLoopController: ObservableObject {
             try? await Task.sleep(nanoseconds: UInt64(Self.interruptGraceSeconds * 1_000_000_000))
             guard !Task.isCancelled, let self, self.generation == current,
                   self.interruptedTurn, let held = self.heldUtterance else { return }
+            let cutSession = self.interruptedSession
             self.heldUtterance = nil
+            VoiceLog.note("interrupt: grace elapsed — sending the held sentence; the cut turn's completion is still due")
+            self.deliver(held, awaitingInterruptedCompletion: true)
+            self.startLostInterruptWatchdog(session: cutSession, generation: current)
+        }
+    }
+
+    /// The cut turn's completion never landed (or landed too late). Open the latch so it cannot
+    /// swallow a later turn's reply forever. Bounded by design: the alternative is a loop that
+    /// refuses to speak until the 120 s reply timeout fails the conversation.
+    private func startLostInterruptWatchdog(session: String?, generation current: UUID) {
+        interruptWatchdog?.cancel()
+        interruptWatchdog = Task { [weak self] in
+            try? await Task.sleep(nanoseconds: UInt64(Self.lostInterruptSeconds * 1_000_000_000))
+            guard !Task.isCancelled, let self, self.generation == current,
+                  self.interruptedTurn, self.interruptedSession == session else { return }
+            VoiceLog.note("interrupt: the cut turn's completion never arrived — no longer waiting for it")
             self.interruptedTurn = false
-            self.deliver(held)
+            self.interruptedSession = nil
         }
     }
 
