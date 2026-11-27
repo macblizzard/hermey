@@ -1,0 +1,10 @@
+# osv-scanner reads this file from the directory it scans.
+#
+# An entry here is an *accepted* advisory, not a hidden one: the id, the reason and a review date
+# are all in the tree, so the next audit shows the decision instead of rediscovering the finding.
+# A dependency never leaves this file by being bumped — the entry is re-examined when it expires.
+
+[[IgnoredVulns]]
+id = "RUSTSEC-2024-0449"
+effectiveUntil = 2027-06-30
+reason = "unsafe-libyaml unmaintained-only advisory, no CVE and no known vulnerability. Reached through serde_yaml_ng, which this daemon uses only to read and write its OWN config files under the data directory, from input the operator wrote. Not a parsing surface for untrusted documents, and there is no maintained alternative in the same position. Re-check on expiry (2027-06-30) or when serde_yaml_ng changes its YAML backend."

@@ -67,8 +67,12 @@ jobs:
         with:
           fetch-depth: 0
       - id: filter
+        # The base sha comes from the event payload. Through `env:` it is data; interpolated into
+        # `run:` it would be script text chosen by whoever opened the pull request.
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
         run: |
-          base="${{ github.event.pull_request.base.sha }}"
+          base="$BASE_SHA"
           if [ -z "$base" ]; then
             echo "mac=true" >> "$GITHUB_OUTPUT"   # push to main, or a dispatch
             exit 0
@@ -132,7 +136,7 @@ jobs:
             -destination 'platform=macOS' -derivedDataPath build/dd \
             ARCHS="arm64 x86_64" ONLY_ACTIVE_ARCH=NO \
             CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" \
-            MARKETING_VERSION=${{ env.APP_VERSION }} CURRENT_PROJECT_VERSION=${{ env.APP_BUILD }} build
+            MARKETING_VERSION="$APP_VERSION" CURRENT_PROJECT_VERSION="$APP_BUILD" build
       - name: Refuse a thin macOS binary
         run: |
           # 0.1.575 shipped arm64-only because nothing pinned the architecture; an Intel Mac cannot
@@ -194,7 +198,7 @@ jobs:
             -derivedDataPath build/ipa-dd \
             CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" \
             CODE_SIGN_ENTITLEMENTS="" PROVISIONING_PROFILE_SPECIFIER="" \
-            MARKETING_VERSION=${{ env.APP_VERSION }} CURRENT_PROJECT_VERSION=${{ env.APP_BUILD }} archive
+            MARKETING_VERSION="$APP_VERSION" CURRENT_PROJECT_VERSION="$APP_BUILD" archive
       - name: Package Payload into .ipa
         run: |
           set -euo pipefail
@@ -258,9 +262,13 @@ jobs:
       - name: Refuse a source change without a version bump
         # `hermeyd --version` is the only way to tell which build a host is running, and it lies the
         # moment the version stops tracking the code. Cheap check, placed before the slow compile.
+        # The base ref is event data (a pull request's base sha, or the sha a push came from), so it
+        # reaches the script as a variable rather than as script text.
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
         run: |
           python3 Tools/check_hermeyd_version_bump.py \
-            --base "${{ github.event.pull_request.base.sha || github.event.before }}" \
+            --base "$BASE_SHA" \
             --head HEAD
       - name: Test
         run: cargo test

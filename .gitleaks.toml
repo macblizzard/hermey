@@ -1,0 +1,23 @@
+# gitleaks reads this file from the directory it scans, so the audit sweep and CI agree on what a
+# finding is.
+#
+# Both entries below are allowlisted by *path and value*, never by path alone: `project.yml` and
+# `A2UISurfaceSettings.swift` are still scanned, so a real credential pasted next to either of
+# these is still reported. The point of the file is that the next audit's "leaks found: 2" does
+# not have to be re-triaged by hand before anyone believes it.
+
+[extend]
+# A custom config replaces the default ruleset unless it says otherwise.
+useDefault = true
+
+[[allowlists]]
+description = "Sparkle's EdDSA PUBLIC key, not a secret. It ships inside every copy of the app and is what the app uses to verify an appcast signature; the private half never leaves the release Mac's Keychain (Tools/release/publish_dist.py reads it from a file only on that machine). A public key is the one value in this repository that is meant to be published."
+paths = ['''project\.yml$''']
+regexTarget = "line"
+regexes = ['''SUPublicEDKey: ezxgxj3MqbAIuclhB15SoXkIuZzYTkUtKlSB9SeCEGk=''']
+
+[[allowlists]]
+description = "A UserDefaults key NAME, not a credential: the defaults key a setting is stored under. It has no value here and no secret to leak; generic-api-key matches it because the identifier is called a key and its value is a dotted string."
+paths = ['''A2UISurfaceSettings\.swift$''']
+regexTarget = "line"
+regexes = ['''disabledKey = "a2ui\.surfaces\.disabled"''']

@@ -534,8 +534,14 @@ def git_blob_sha(data: bytes) -> str:
     `content` for any file over 1 MB and expects the caller to fetch the blob — but it always answers
     with the blob's own SHA. Comparing that against the hash computed here proves the very bytes that
     were pushed, without downloading them twice.
+
+    SHA-1 is the *format* here, not a security choice: git names blobs this way and a different digest
+    would simply not match the API's `sha` field. `usedforsecurity=False` says that to both the
+    interpreter and to the audit — no collision resistance is being relied on, the value is only ever
+    compared with the one GitHub returned for the same bytes.
     """
-    return hashlib.sha1(b"blob %d\0" % len(data) + data).hexdigest()
+    # nosemgrep: python.lang.security.insecure-hash-algorithms.insecure-hash-algorithm-sha1
+    return hashlib.sha1(b"blob %d\0" % len(data) + data, usedforsecurity=False).hexdigest()
 
 
 def verify_pages_file(repo: str, path: str, expected_size: int, expected_blob_sha: str,

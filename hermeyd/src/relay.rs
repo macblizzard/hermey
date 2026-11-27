@@ -2389,6 +2389,11 @@ pub async fn relay_guarded(
 
 #[cfg(test)]
 mod tests {
+    // Every socket dialled in this module is `127.0.0.1`, to a listener this test bound itself:
+    // there is no network between the two ends, so plaintext is correct here. The
+    // `detect-insecure-websocket` rule is a regex that cannot see where the address came from, so
+    // each construction is marked `nosemgrep` with this note above it — the rule is not switched
+    // off for the file, and a plaintext URL built anywhere else in it would still be reported.
     use super::*;
     use axum::extract::ws::WebSocketUpgrade;
     use std::net::SocketAddr;
@@ -3795,6 +3800,7 @@ mod tests {
         let (engine_addr, _engine, _heard) = fake_engine(false).await;
         let registry = Registry::default();
         let (addr, server) = serve_relay(
+            // nosemgrep: javascript.lang.security.detect-insecure-websocket.detect-insecure-websocket
             format!("ws://{engine_addr}"),
             Some("device-a".to_string()),
             registry.clone(),
@@ -3803,6 +3809,7 @@ mod tests {
         .await;
 
         let (mut client, _) =
+            // nosemgrep: javascript.lang.security.detect-insecure-websocket.detect-insecure-websocket
             tokio_tungstenite::connect_async(format!("ws://{addr}/ws")).await.unwrap();
         // The relay registers the socket before it dials the engine, so this is when a publish can
         // reach it.
@@ -3833,6 +3840,7 @@ mod tests {
     async fn an_oversized_client_frame_closes_1009_and_never_reaches_the_engine() {
         let (engine_addr, engine, mut heard) = fake_engine(false).await;
         let (addr, server) = serve_relay(
+            // nosemgrep: javascript.lang.security.detect-insecure-websocket.detect-insecure-websocket
             format!("ws://{engine_addr}"),
             None,
             Registry::default(),
@@ -3840,6 +3848,7 @@ mod tests {
         )
         .await;
 
+        // nosemgrep: javascript.lang.security.detect-insecure-websocket.detect-insecure-websocket
         let (mut client, _) = tokio_tungstenite::connect_async(format!("ws://{addr}/ws"))
             .await
             .unwrap();
@@ -3863,6 +3872,7 @@ mod tests {
         let (engine_addr, engine, _heard) = fake_engine(true).await;
         let registry = Registry::default();
         let (addr, server) = serve_relay(
+            // nosemgrep: javascript.lang.security.detect-insecure-websocket.detect-insecure-websocket
             format!("ws://{engine_addr}"),
             Some("device-a".into()),
             registry.clone(),
@@ -3870,6 +3880,7 @@ mod tests {
         )
         .await;
 
+        // nosemgrep: javascript.lang.security.detect-insecure-websocket.detect-insecure-websocket
         let (mut client, _) = tokio_tungstenite::connect_async(format!("ws://{addr}/ws"))
             .await
             .unwrap();
@@ -3890,6 +3901,7 @@ mod tests {
     async fn the_relay_declares_server_request_capability_once_over_a_real_socket() {
         let (engine_addr, engine, mut heard) = fake_engine(true).await;
         let (addr, server) = serve_relay(
+            // nosemgrep: javascript.lang.security.detect-insecure-websocket.detect-insecure-websocket
             format!("ws://{engine_addr}"),
             None,
             Registry::default(),
@@ -3897,6 +3909,7 @@ mod tests {
         )
         .await;
 
+        // nosemgrep: javascript.lang.security.detect-insecure-websocket.detect-insecure-websocket
         let (mut client, _) = tokio_tungstenite::connect_async(format!("ws://{addr}/ws"))
             .await
             .unwrap();
@@ -3931,6 +3944,7 @@ mod tests {
     async fn a_forbidden_method_is_answered_locally_and_never_reaches_the_engine() {
         let (engine_addr, engine, mut heard) = fake_engine(false).await;
         let (addr, server) = serve_relay(
+            // nosemgrep: javascript.lang.security.detect-insecure-websocket.detect-insecure-websocket
             format!("ws://{engine_addr}"),
             None,
             Registry::default(),
@@ -3938,6 +3952,7 @@ mod tests {
         )
         .await;
 
+        // nosemgrep: javascript.lang.security.detect-insecure-websocket.detect-insecure-websocket
         let (mut client, _) = tokio_tungstenite::connect_async(format!("ws://{addr}/ws"))
             .await
             .unwrap();
@@ -3993,6 +4008,7 @@ mod tests {
         let app = axum::Router::new().route(
             "/ws",
             axum::routing::get(move |ws: WebSocketUpgrade| async move {
+                // nosemgrep: javascript.lang.security.detect-insecure-websocket.detect-insecure-websocket
                 ws.on_upgrade(move |socket| relay(socket, format!("ws://{engine_addr}"), None))
             }),
         );
@@ -4000,6 +4016,7 @@ mod tests {
         let addr = listener.local_addr().unwrap();
         let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
 
+        // nosemgrep: javascript.lang.security.detect-insecure-websocket.detect-insecure-websocket
         let (mut client, _) = tokio_tungstenite::connect_async(format!("ws://{addr}/ws"))
             .await
             .unwrap();
@@ -4196,6 +4213,7 @@ mod tests {
         )
         .await;
         let (addr, server) = serve_relay(
+            // nosemgrep: javascript.lang.security.detect-insecure-websocket.detect-insecure-websocket
             format!("ws://{engine_addr}"),
             None,
             Registry::default(),
@@ -4203,6 +4221,7 @@ mod tests {
         )
         .await;
 
+        // nosemgrep: javascript.lang.security.detect-insecure-websocket.detect-insecure-websocket
         let (mut client, _) = tokio_tungstenite::connect_async(format!("ws://{addr}/ws"))
             .await
             .unwrap();
@@ -4267,6 +4286,7 @@ mod tests {
         )
         .await;
         let (addr, server) = serve_relay(
+            // nosemgrep: javascript.lang.security.detect-insecure-websocket.detect-insecure-websocket
             format!("ws://{engine_addr}"),
             None,
             Registry::default(),
@@ -4274,6 +4294,7 @@ mod tests {
         )
         .await;
 
+        // nosemgrep: javascript.lang.security.detect-insecure-websocket.detect-insecure-websocket
         let (mut client, _) = tokio_tungstenite::connect_async(format!("ws://{addr}/ws"))
             .await
             .unwrap();
@@ -4302,12 +4323,14 @@ mod tests {
         for code in [1000u16, CLOSE_ENGINE_DOWN] {
             let (engine_addr, engine, _heard) = scripted_engine(1, vec![Script::Close(code)]).await;
             let (addr, server) = serve_relay(
+                // nosemgrep: javascript.lang.security.detect-insecure-websocket.detect-insecure-websocket
                 format!("ws://{engine_addr}"),
                 None,
                 Registry::default(),
                 Limits::default(),
             )
             .await;
+            // nosemgrep: javascript.lang.security.detect-insecure-websocket.detect-insecure-websocket
             let (mut client, _) = tokio_tungstenite::connect_async(format!("ws://{addr}/ws"))
                 .await
                 .unwrap();
@@ -4328,6 +4351,7 @@ mod tests {
         )
         .await;
         let (addr, server) = serve_relay(
+            // nosemgrep: javascript.lang.security.detect-insecure-websocket.detect-insecure-websocket
             format!("ws://{engine_addr}"),
             None,
             Registry::default(),
@@ -4335,6 +4359,7 @@ mod tests {
         )
         .await;
 
+        // nosemgrep: javascript.lang.security.detect-insecure-websocket.detect-insecure-websocket
         let (mut client, _) = tokio_tungstenite::connect_async(format!("ws://{addr}/ws"))
             .await
             .unwrap();
@@ -4379,6 +4404,7 @@ mod tests {
             drop(listener);
         });
         let (addr, server) = serve_relay(
+            // nosemgrep: javascript.lang.security.detect-insecure-websocket.detect-insecure-websocket
             format!("ws://{engine_addr}"),
             None,
             Registry::default(),
@@ -4386,6 +4412,7 @@ mod tests {
         )
         .await;
 
+        // nosemgrep: javascript.lang.security.detect-insecure-websocket.detect-insecure-websocket
         let (mut client, _) = tokio_tungstenite::connect_async(format!("ws://{addr}/ws"))
             .await
             .unwrap();

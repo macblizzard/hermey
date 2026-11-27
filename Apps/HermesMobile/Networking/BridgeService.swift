@@ -1,4 +1,5 @@
 import Foundation
+import HermesKit
 
 /// What the app needs from the bridge's HTTP surface, and nothing more.
 ///
@@ -99,7 +100,11 @@ struct LiveBridgeService: BridgeServiceProtocol, @unchecked Sendable {
         guard var components = URLComponents(url: host.baseURL, resolvingAgainstBaseURL: false) else {
             throw BridgeError.invalidHost(host.host)
         }
-        components.scheme = components.scheme == "http" ? "ws" : "wss"
+        // Plaintext only to this machine: pairing normalises a host to `wss`, so the plaintext branch
+        // is for a loopback bridge and nothing else. A base that somehow carries `http` for a
+        // tailnet or LAN host still gets `wss` — the ticket is a credential.
+        let plaintext = components.scheme == "http" && LoopbackHost.isLoopback(components.host)
+        components.scheme = plaintext ? "ws" : "wss"
         components.path = "/v1/ws"
         components.queryItems = [URLQueryItem(name: "ticket", value: response.wsTicket)]
         guard let url = components.url else { throw BridgeError.malformedResponse }
@@ -289,7 +294,9 @@ struct PreviewBridgeService: BridgeServiceProtocol {
     }
 
     func websocketURL(for host: PairedHost, refreshToken: String) async throws -> URL {
-        guard let url = URL(string: "ws://preview.invalid/v1/ws?ticket=preview") else {
+        // The preview never dials, and a `.invalid` name never resolves — `wss` anyway, so a stub
+        // cannot be the example a later change copies into a real socket.
+        guard let url = URL(string: "wss://preview.invalid/v1/ws?ticket=preview") else {
             throw BridgeError.malformedResponse
         }
         return url

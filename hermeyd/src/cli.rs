@@ -468,7 +468,7 @@ async fn listening(addr: &str) -> Result<(), String> {
     }
 }
 
-/// `host:port` out of a `ws://` / `wss://` / `http://` URL. Defaults to the engine's own port so a
+/// `host:port` out of a WebSocket or HTTP URL (`ws`, `wss`, `http`). Defaults to the engine's own port so a
 /// malformed value still answers something a person can act on.
 fn socket_of(url: &str) -> String {
     let rest = url

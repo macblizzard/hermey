@@ -448,7 +448,7 @@ pub async fn display_ws(
     // The display ticket is the ONLY credential this socket accepts: adding the engine token made
     // the engine refuse the upgrade (measured — ticket alone answers `RFB 003.008`).
     // `engine_ws` already ends in /api/ws, so the display path must be derived from the origin only —
-    // appending blindly produced ws://…/api/ws/api/display/ws and an instant close.
+    // appending blindly produced a doubled `/api/ws/api/display/ws` and an instant close.
     let origin = st.engine_ws.split("/api/").next().unwrap_or(&st.engine_ws).to_string();
     let upstream = format!(
         "{origin}/api/display/ws?display_ticket={}",

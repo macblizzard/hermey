@@ -685,6 +685,11 @@ class ItStaysUntilTheOwnerRemovesIt(unittest.TestCase):
         if found is None:
             self.fail("staleAfter is gone, so nothing bounds a dead card")
         expression = found.group(1).strip()
+        # The expression is not input: the regex above admits only digits, spaces and `*` taken from
+        # this repository's own Swift, and the globals are emptied so a name cannot resolve to
+        # anything. `eval` of arithmetic is the only way to compare `8 * 60 * 60` as written in the
+        # source against the eight-hour floor.
+        # nosemgrep: python.lang.security.audit.eval-detected.eval-detected
         self.assertGreaterEqual(eval(expression, {"__builtins__": {}}), 8 * 60 * 60)
 
     def test_a_finished_card_is_never_stale(self) -> None:

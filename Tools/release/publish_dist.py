@@ -44,6 +44,7 @@ import shutil
 import ssl
 import sys
 import time
+import urllib.parse
 import urllib.request
 from pathlib import Path
 
@@ -112,8 +113,44 @@ def digest_of(path: Path) -> tuple[int, str]:
     return size, hasher.hexdigest()
 
 
+#: Printed the first time TLS verification is turned off, and never repeated: one line, greppable,
+#: on stderr so it is not lost between the publish's own output lines.
+INSECURE_WARNING = (
+    "WARNING: --insecure — TLS verification is OFF for this publish's wire check; "
+    "a self-signed origin you control is the only safe target"
+)
+
+_insecure_warned = False
+
+
+def _warn_insecure_once() -> None:
+    global _insecure_warned
+    if not _insecure_warned:
+        print(INSECURE_WARNING, file=sys.stderr, flush=True)
+        _insecure_warned = True
+
+
+def unverified_context() -> ssl.SSLContext:
+    """An unverified TLS context — reachable only through `--insecure`, and loud when it is used.
+
+    The one caller is `fetch(insecure=True)`; the one caller of that with a live flag is `main()`,
+    which passes `insecure=args.insecure`. There is no other route: no error handler retries with
+    verification off, and `fetch` only takes the plaintext context when `insecure is True` rather
+    than on anything merely truthy. A verification failure stays a failure (`verify()` records it
+    and the publish exits non-zero), because a check that quietly turns itself off is not a check.
+    """
+    _warn_insecure_once()
+    # nosemgrep: python.lang.security.unverified-ssl-context.unverified-ssl-context
+    return ssl._create_unverified_context()  # nosec B323  # noqa: S323 — only via --insecure
+
+
 def fetch(url: str, timeout: float = 60, insecure: bool = False) -> bytes:
-    context = ssl._create_unverified_context() if insecure else None  # noqa: S323 (opt-in only)
+    scheme = urllib.parse.urlsplit(url).scheme.lower()
+    if scheme not in ("http", "https"):
+        # `urlopen` also speaks file:// and ftp://. A manifest that named one of those would turn
+        # this wire check into a local read, so the tool refuses anything that is not http(s).
+        raise RuntimeError(f"refusing to fetch {url}: only http(s) URLs are verified")
+    context = unverified_context() if insecure is True else None
     request = urllib.request.Request(url, headers={"Cache-Control": "no-cache"})
     with urllib.request.urlopen(request, timeout=timeout, context=context) as response:
         if response.status != 200:
@@ -503,6 +540,12 @@ def main() -> int:
     parser.add_argument("--insecure", action="store_true",
                         help="skip TLS verification for the wire check (self-signed origins only)")
     args = parser.parse_args()
+
+    if args.insecure:
+        # Announced before the first request, on stderr, so it sits above whatever the publish
+        # prints and cannot be missed in a build log. `unverified_context` repeats it only if the
+        # flag somehow reached the fetch without passing here.
+        _warn_insecure_once()
 
     if not args.base_url:
         parser.error("--base-url is required (or set HERMEY_MIRROR_BASE_URL)")

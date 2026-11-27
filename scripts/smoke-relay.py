@@ -23,6 +23,9 @@ import websockets
 
 HOST = os.environ.get("HERMEYD", "127.0.0.1:8788")
 HTTP = f"http://{HOST}"
+# Plaintext on purpose: this is a smoke test against a hermeyd on this machine's loopback, before
+# any TLS front end is in the picture. `HERMEYD` is the operator's own host, not a user's.
+# nosemgrep: javascript.lang.security.detect-insecure-websocket.detect-insecure-websocket
 WS = f"ws://{HOST}/v1/ws"
 PROFILE = os.environ.get("SMOKE_PROFILE", "scratch")
 PROMPT = os.environ.get("SMOKE_PROMPT", "Reply with exactly: RELAY-OK")

@@ -1,0 +1,18 @@
+# bandit configuration for the audit sweep, which runs `bandit -q -r .` from the repository root
+# and reads this file as an INI config (the `.bandit` convention bandit discovers on its own).
+#
+# Exclusions are by PATH, never by rule. A rule switched off is switched off for every file in the
+# tree, so the next audit could not tell a test harness from the daemon that handles credentials.
+# The two paths below are code that does not ship as host behaviour:
+#
+#   Tests/                        the Python test harness. `assert` (B101), `subprocess` (B603,
+#                                 B607, B404) and `try/except/pass` are how a test asserts and how
+#                                 a fake engine is launched; none of it runs on a user's machine.
+#   hermeyd/assets/agent-skills/  the agent-skill scripts bundled for the engine to run inside the
+#                                 host's sandbox — vendored copies of Tools/, which are scanned there.
+#
+# Everything else — `hermeyd/src`, `Tools/`, `scripts/` — is scanned with every rule, and the two
+# deliberate exceptions left in it carry an inline `# nosec` with its reason beside it.
+
+[bandit]
+exclude = */Tests/*,*/hermeyd/assets/agent-skills/*

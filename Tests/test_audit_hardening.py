@@ -44,9 +44,14 @@ class AuditHardening(unittest.TestCase):
         self.assertIn("URL(fileURLWithPath: suggestedFilename).lastPathComponent", browser)
         self.assertIn("while FileManager.default.fileExists(atPath: target.path)", browser)
 
-    def test_remote_ws_pairings_are_refused(self) -> None:
+    def test_remote_ws_pairings_are_upgraded_to_wss(self) -> None:
+        # Retargeted 2026-11-27: a plaintext pairing to a host that is not this machine is now
+        # *upgraded* rather than refused, and the predicate lives in `LoopbackHost` (which knows
+        # that URLComponents returns `::1`, not `[::1]`). The property this test has always meant is
+        # the same one: a device token never travels in cleartext off this box.
         pairing = (ROOT / "Apps" / "HermesMac" / "Pairing" / "PairingAddress.swift").read_text()
-        self.assertIn('if scheme == "ws", !["127.0.0.1", "localhost", "[::1]"].contains(host.lowercased())', pairing)
+        self.assertIn('if scheme == "ws", !LoopbackHost.isLoopback(host) {', pairing)
+        self.assertIn('components.scheme = "wss"', pairing)
 
     def test_host_registration_is_per_device_and_revoke_is_socket_scoped(self) -> None:
         # Retargeted from `hermes_bridge/local_computers.py` (deleted with the Python bridge):

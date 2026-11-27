@@ -177,10 +177,14 @@ public struct BotComputerClient: Sendable {
     // MARK: The socket
 
     /// `https://host:8443` + `/v1/display/ws?display_ticket=…` -> `wss://host:8443/…`.
+    ///
+    /// Plaintext only to this machine: the display socket carries the screen, and the ticket in
+    /// its query string is a credential. An `http` base for a tailnet or LAN host still gets `wss`.
     public func socketURL(baseURL: URL, path: String, ticket: String) -> URL? {
         guard var components = URLComponents(url: baseURL.appendingPathComponent(path),
                                              resolvingAgainstBaseURL: false) else { return nil }
-        components.scheme = components.scheme == "http" ? "ws" : "wss"
+        let plaintext = components.scheme == "http" && LoopbackHost.isLoopback(components.host)
+        components.scheme = plaintext ? "ws" : "wss"
         components.queryItems = [URLQueryItem(name: "display_ticket", value: ticket)]
         return components.url
     }

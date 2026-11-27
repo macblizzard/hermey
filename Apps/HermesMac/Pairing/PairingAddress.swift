@@ -1,4 +1,5 @@
 import Foundation
+import HermesKit
 
 /// Where this Mac is pointed: the host's WebSocket URL and the credentials it presents.
 ///
@@ -36,12 +37,27 @@ struct PairingAddress: Equatable, Sendable, Codable {
     /// Where the relay is mounted on the bridge.
     static let relayPath = "/v1/ws"
 
+    /// `baseURL` with a plaintext scheme taken off when the host is not this machine.
+    ///
+    /// `parse` upgrades what the pair sheet accepts, and this is the second lock: a pairing decoded
+    /// from a save written before that rule, or an address constructed directly in a test, still
+    /// cannot dial plaintext to a tailnet name or a LAN address. The rewrite only ever runs in one
+    /// direction — `wss` is never turned into `ws`, whatever the host.
+    private func securedBaseURL() -> String {
+        guard var components = URLComponents(string: baseURL),
+              (components.scheme ?? "").lowercased() == "ws",
+              !LoopbackHost.isLoopback(components.host)
+        else { return baseURL }
+        components.scheme = "wss"
+        return components.url?.absoluteString ?? baseURL
+    }
+
     /// The socket URL for one connection, with its ticket attached.
     ///
     /// The bridge's relay takes the credential as `?ticket=` (`Bridge/README.md`,
     /// "Endpoints"). A pasted URL that already carries a ticket keeps it.
     func webSocketURL(ticket: String) throws -> URL {
-        guard var components = URLComponents(string: baseURL) else {
+        guard var components = URLComponents(string: securedBaseURL()) else {
             throw PairingError.malformedURL
         }
         let scheme = (components.scheme ?? "").lowercased()
@@ -67,7 +83,7 @@ struct PairingAddress: Equatable, Sendable, Codable {
     /// The local-computer executor socket. This is an *outbound* connection from the Mac to the
     /// bridge: no inbound port, no SSH, no Remote Login. The ticket is minted per connection.
     func localComputerSocketURL(ticket: String) throws -> URL {
-        guard var components = URLComponents(string: baseURL) else { throw PairingError.malformedURL }
+        guard var components = URLComponents(string: securedBaseURL()) else { throw PairingError.malformedURL }
         let scheme = (components.scheme ?? "").lowercased()
         guard scheme == "wss" || scheme == "ws", components.host?.isEmpty == false else {
             throw PairingError.malformedURL
@@ -101,7 +117,7 @@ struct PairingAddress: Equatable, Sendable, Codable {
     /// `wss://host` → `https://host`; `ws://127.0.0.1:8787` → `http://127.0.0.1:8787`. The
     /// path is dropped because `/v1/token` hangs off the origin, not off `/v1/ws`.
     func apiOrigin() throws -> URL {
-        guard var components = URLComponents(string: baseURL) else {
+        guard var components = URLComponents(string: securedBaseURL()) else {
             throw PairingError.malformedURL
         }
         switch (components.scheme ?? "").lowercased() {
@@ -118,15 +134,20 @@ struct PairingAddress: Equatable, Sendable, Codable {
 
     /// Validate what the sheet has, before anything is persisted or dialled.
     ///
-    /// A bare host is accepted (`hermes.ts.net`); the scheme is then assumed to be `wss`,
-    /// because a Hermes host on a tailnet is TLS or nothing.
+    /// A bare host is accepted (`hermes.ts.net`); the scheme is then assumed to be `wss`, because a
+    /// Hermes host on a tailnet is TLS or nothing.
+    ///
+    /// A typed plaintext (`ws`) URL is honoured only for a loopback host. Anything else is **upgraded** to
+    /// `wss://` and the rest of the URL is kept: the person meant that host, not a cleartext one, and
+    /// the ticket in the query string plus every frame after it is a credential. The rewrite is one
+    /// way — nothing here ever turns `wss` into `ws`.
     static func parse(_ rawURL: String, deviceID rawDeviceID: String = "", token rawToken: String) throws -> PairingAddress {
         var text = rawURL.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty else { throw PairingError.missingURL }
         if !text.contains("://") {
             text = "wss://" + text
         }
-        guard let components = URLComponents(string: text) else {
+        guard var components = URLComponents(string: text) else {
             throw PairingError.malformedURL
         }
         let scheme = (components.scheme ?? "").lowercased()
@@ -136,18 +157,21 @@ struct PairingAddress: Equatable, Sendable, Codable {
         guard let host = components.host, !host.isEmpty else {
             throw PairingError.missingHost
         }
-        // A token over plaintext is only acceptable on this machine. A remote ws:// URL used to be
-        // accepted and silently turned into an http:// token mint.
-        if scheme == "ws", !["127.0.0.1", "localhost", "[::1]"].contains(host.lowercased()) {
-            throw PairingError.unsupportedScheme("ws")
+        if scheme == "ws", !LoopbackHost.isLoopback(host) {
+            components.scheme = "wss"
         }
         let token = rawToken.trimmingCharacters(in: .whitespacesAndNewlines)
         let hasTicket = (components.queryItems ?? []).contains {
             $0.name == "ticket" && !($0.value ?? "").isEmpty
         }
         guard hasTicket || !token.isEmpty else { throw PairingError.missingToken }
+        // Never fall back to the text as typed: after an upgrade that string is the plaintext URL,
+        // and a fallback would be exactly the silent downgrade this method exists to prevent.
+        guard let normalised = components.url?.absoluteString else {
+            throw PairingError.malformedURL
+        }
 
-        return PairingAddress(baseURL: components.url?.absoluteString ?? text,
+        return PairingAddress(baseURL: normalised,
                               deviceID: rawDeviceID.trimmingCharacters(in: .whitespacesAndNewlines),
                               token: token)
     }
@@ -167,6 +191,9 @@ enum PairingError: LocalizedError, Equatable {
         case .malformedURL:
             return "That URL cannot be read. It should look like wss://hermes.example.ts.net."
         case .unsupportedScheme(let scheme):
+            // The one place this file spells a plaintext URL, because the reader of the error needs
+            // the two literals to compare. Nothing dials what it says.
+            // nosemgrep: javascript.lang.security.detect-insecure-websocket.detect-insecure-websocket
             return "Use wss:// (or ws:// on your own loopback) — not \(scheme)://."
         case .missingHost:
             return "The URL has no host in it."

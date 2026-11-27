@@ -531,6 +531,11 @@ pub(crate) fn require_device(st: &AppState, headers: &HeaderMap) -> Result<Strin
 
 #[cfg(test)]
 mod tests {
+    // Every socket dialled in this module is `127.0.0.1`, to a listener these tests bind themselves:
+    // there is no network between the two ends, so plaintext is correct here. The
+    // `detect-insecure-websocket` rule is a regex that cannot see where the address came from, so
+    // each construction is marked `nosemgrep` with this note above it — the rule is not switched
+    // off for the file, and a plaintext URL built anywhere else in it would still be reported.
     use super::*;
     use std::path::{Path, PathBuf};
 
@@ -696,6 +701,7 @@ mod tests {
         let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
         let addr = listener.local_addr().unwrap();
         drop(listener);
+        // nosemgrep: javascript.lang.security.detect-insecure-websocket.detect-insecure-websocket
         Box::leak(format!("ws://{addr}/api/ws").into_boxed_str())
     }
 
@@ -740,6 +746,7 @@ mod tests {
         let (addr, server) = serve(st.clone()).await;
 
         let result =
+            // nosemgrep: javascript.lang.security.detect-insecure-websocket.detect-insecure-websocket
             tokio_tungstenite::connect_async(format!("ws://{addr}/v1/ws?ws_ticket={ticket}")).await;
         match result {
             Err(tokio_tungstenite::tungstenite::Error::Http(response)) => assert_eq!(
@@ -783,6 +790,7 @@ mod tests {
         let ticket = st.tickets.mint_ticket("device-a");
         let (addr, server) = serve(st.clone()).await;
         let (_client, _) =
+            // nosemgrep: javascript.lang.security.detect-insecure-websocket.detect-insecure-websocket
             tokio_tungstenite::connect_async(format!("ws://{addr}/v1/ws?ws_ticket={ticket}"))
                 .await
                 .expect("the upgrade is admitted by evicting the oldest socket");
