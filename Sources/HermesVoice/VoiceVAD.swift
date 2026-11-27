@@ -48,6 +48,13 @@ public struct VoiceVADConfig: Sendable, Equatable {
     /// bound under another name; it is a field so a quiet input can lower it without changing the
     /// rule that the trigger is a multiple of the room.
     public var listeningTriggerFloor: Double = 400
+    /// How far above the measured floor the end-of-speech boundary sits, as a multiple of it.
+    /// 1.5 is close enough to the room that its ordinary drift stays under the boundary, and far
+    /// enough above it that the boundary is never the floor itself (see `listeningLevels(floor:)`).
+    public var endpointSilenceMultiplier: Double = 1.5
+    /// The lowest the end-of-speech boundary may sit, in int16 RMS. A phone's room reads 15–30;
+    /// a constant below that is a boundary the room itself can never be quiet enough to cross.
+    public var endpointSilenceMinimum: Double = 60
     /// How many blocks report their own level at the head of a stream. Five is 150 ms: enough to
     /// tell a silent tap from a quiet one, and short enough to be five lines in a pasted log.
     public var diagnosticBlockCount: Int = 5
@@ -69,13 +76,51 @@ public struct VoiceVADConfig: Sendable, Equatable {
     /// The two levels the listening gate is held to, both read from the floor this room has.
     ///
     /// The trigger is the barge multiplier over the measured floor — the same arithmetic the
-    /// detector already uses while the speaker plays — floored at `listeningTriggerFloor`. "No
-    /// voice" is the floor itself, never above `silenceRMS`: on a phone whose floor is 20, an
-    /// endpointing threshold of 200 is satisfied by every block, so the gate would end every
-    /// utterance 0.6 s after it began and no turn could ever survive the collection.
+    /// detector already uses while the speaker plays — floored at `listeningTriggerFloor`.
+    ///
+    /// The endpointing boundary is a step *above* the floor, never the floor itself: see
+    /// `endpointSilence(floor:)` for why the 0.1.691 room (15–28 RMS of ambient) could not end an
+    /// utterance against a boundary of 8, and why the Mac still gets its constant 200.
     public func listeningLevels(floor: Double) -> VoiceLevels {
-        VoiceLevels(trigger: max(floor * bargeMultiplier, listeningTriggerFloor),
-                    silence: min(silenceRMS, max(floor, measuredFloorMinimum)))
+        listeningLevels(triggerFloor: floor, roomFloor: floor)
+    }
+
+    /// The same two levels when the trigger's floor and the room's are not the same measurement.
+    ///
+    /// The trigger follows the floor the barge detector holds, exactly as it did before this change
+    /// — it is the half that works, and it must keep working. The endpoint boundary follows the
+    /// room the stream itself reported, which at the head of a conversation is read from its first
+    /// quiet blocks (`floorFromAmbient`) because the detector has not calibrated yet.
+    public func listeningLevels(triggerFloor: Double, roomFloor: Double) -> VoiceLevels {
+        VoiceLevels(trigger: max(triggerFloor * bargeMultiplier, listeningTriggerFloor),
+                    silence: endpointSilence(floor: roomFloor))
+    }
+
+    /// The boundary a collection ends against, for a room whose floor is `floor`.
+    ///
+    /// A step above the floor, never the floor itself: a room's own blocks sit at its floor and
+    /// drift around the 90th percentile, so a boundary drawn *at* the floor can never be met by
+    /// the room it was measured in — the 0.1.691 log is exactly that (ambient 5–28 RMS against a
+    /// boundary of 8, so a sentence that had already tripped never ended). `floor × 1.5` with a 60
+    /// minimum lands between that room (15–28) and that speech (130+), and the cap at `silenceRMS`
+    /// leaves the Mac — whose floor is clamped to ≥200 — on the constant 200 it always used.
+    public func endpointSilence(floor: Double) -> Double {
+        min(silenceRMS, max(floor * endpointSilenceMultiplier, endpointSilenceMinimum))
+    }
+
+    /// The floor a stream is reporting *before* anyone speaks, read from its own quiet blocks.
+    ///
+    /// The barge detector learns a floor by calibrating for 450 ms, but the listening phase at the
+    /// head of a conversation has not fed it yet — speech can arrive inside that window (in the
+    /// 0.1.691 log it arrived after five blocks), and `quietFloor` is then only its initial
+    /// minimum. Rather than falling back to a constant, the same estimator the detector would have
+    /// used — the 90th percentile of the quiet blocks, never under the input's minimum — is
+    /// applied to the blocks this stream has actually reported.
+    public func floorFromAmbient(_ blocks: [Double]) -> Double {
+        guard !blocks.isEmpty else { return measuredFloorMinimum }
+        let sorted = blocks.sorted()
+        let index = min(sorted.count - 1, Int((Double(sorted.count) * 0.9).rounded(.up)) - 1)
+        return max(sorted[max(0, index)], measuredFloorMinimum)
     }
 
     /// The same rules, calibrated for an input that is not a desktop microphone.
@@ -96,8 +141,11 @@ public struct VoiceVADConfig: Sendable, Equatable {
 
 /// The listening gate's trigger and its "this block is quiet" boundary, together.
 ///
-/// They are one value because they come from one floor: a gate that tripped on the room and then
-/// endpointed against a louder constant would end the sentence it just heard.
+/// They are one value because they usually come from one floor: a gate that tripped on the room
+/// and then endpointed against a louder constant would end the sentence it just heard. In the
+/// listening phase the two measurements can differ — the trigger follows the barge detector's
+/// floor, which is the one that already trips, while the boundary follows the room the stream
+/// itself reported, because at the head of a conversation the detector has not calibrated yet.
 public struct VoiceLevels: Sendable, Equatable {
     public let trigger: Double
     public let silence: Double

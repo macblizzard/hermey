@@ -140,6 +140,12 @@ public final class VoiceCaptureEngine {
     private var voicedBlocks = 0
     private var blockCount = 0
     private var isRunning = false
+    /// The quiet blocks heard before speech began in the current listening phase. At the head of a
+    /// conversation the barge detector has not been fed yet (`quietFloor` is only its minimum), so
+    /// these blocks are the room's measurement; `listenSilence` is the boundary they produced,
+    /// pinned when the utterance starts and logged with its endpoint.
+    private var listenAmbient: [Double] = []
+    private var listenSilence: Double = 0
     /// Diagnostics only: was a buffer ever handed to us, and did the first speech start already
     /// make it into the log. Reset by every start, so a second conversation logs its own firsts.
     private var sawFirstRawBuffer = false
@@ -194,6 +200,10 @@ public final class VoiceCaptureEngine {
         collected.removeAll()
         quietRun = 0
         voicedBlocks = 0
+        // A new phase measures its own room: the boundary pinned for the last utterance belongs to
+        // the floor that utterance heard, not the one this one will.
+        listenAmbient.removeAll()
+        listenSilence = 0
         pending.removeAll()
         preRoll.removeAll()
         blockCount = 0
@@ -301,6 +311,8 @@ public final class VoiceCaptureEngine {
         preRoll.removeAll()
         pending.removeAll()
         gate.reset()
+        listenAmbient.removeAll()
+        listenSilence = 0
         lock.unlock()
         guard wasRunning else { return }
         if engine.isRunning { engine.stop() }
@@ -461,10 +473,20 @@ public final class VoiceCaptureEngine {
 
         switch phase {
         case .listening:
-            // The gate answers "has this person finished a sentence?"; both of its levels come from
-            // the floor this device actually measured, so a phone whose room sits at 20 RMS is
-            // listened to at 120 rather than at a desktop microphone's fixed 600.
-            let levels = config.listeningLevels(floor: detector.quietFloor)
+            // The trigger is unchanged: it follows the detector's floor, the same gate that just
+            // started working. The endpoint boundary cannot: at the head of a conversation the
+            // detector has not measured the room yet, so it comes from the quiet blocks this
+            // stream has actually reported, never from a constant.
+            let roomFloor = detector.isFloorLocked
+                ? detector.quietFloor
+                : config.floorFromAmbient(listenAmbient)
+            let levels = config.listeningLevels(triggerFloor: detector.quietFloor, roomFloor: roomFloor)
+            if !gate.hasStarted, rms < levels.trigger {
+                // Quiet evidence only: appending a block that is already speech would raise the
+                // bar the next block of that same sentence has to clear.
+                listenAmbient.append(rms)
+                if listenAmbient.count > config.floorWindowBlocks { listenAmbient.removeFirst() }
+            }
             let decision = gate.feed(rms: rms, trigger: levels.trigger, silence: levels.silence)
             switch decision {
             case .started:
@@ -473,9 +495,10 @@ public final class VoiceCaptureEngine {
                 collected = preRoll.suffix(min(10, preRoll.count)).flatMap { $0 }
                 collecting = true
                 voicedBlocks = 1
+                listenSilence = levels.silence
                 if !loggedFirstSpeech {
                     loggedFirstSpeech = true
-                    logFromAudioThread("vad: speech started, rms \(Int(rms))")
+                    logFromAudioThread("vad: speech started, rms \(Int(rms)), floor \(Int(roomFloor)), silence \(Int(levels.silence))")
                 }
             case .idle:
                 if collecting {
@@ -489,7 +512,7 @@ public final class VoiceCaptureEngine {
                 collecting = false
                 let voiced = Double(voicedBlocks) * config.blockSeconds
                 voicedBlocks = 0
-                logFromAudioThread("endpoint: \(String(format: "%.2f", Double(audio.count) / config.sampleRate)) s, \(String(format: "%.2f", voiced)) s voiced, keep \(keep)")
+                logFromAudioThread("endpoint: \(String(format: "%.2f", Double(audio.count) / config.sampleRate)) s, \(String(format: "%.2f", voiced)) s voiced, keep \(keep), silence \(Int(listenSilence))")
                 events.append(.utterance(VoiceUtterance(wav: VoiceWAV.encode(samples: audio, sampleRate: Int(config.sampleRate)),
                                                         duration: Double(audio.count) / config.sampleRate,
                                                         voicedDuration: voiced),
@@ -521,7 +544,7 @@ public final class VoiceCaptureEngine {
                     let voiced = Double(voicedBlocks) * config.blockSeconds
                     let keep = voicedBlocks >= config.minimumUtteranceBlocks
                     voicedBlocks = 0
-                    logFromAudioThread("endpoint: \(String(format: "%.2f", Double(audio.count) / config.sampleRate)) s after \(trip == nil ? "a turn" : "barge-in"), \(String(format: "%.2f", voiced)) s voiced, keep \(keep)")
+                    logFromAudioThread("endpoint: \(String(format: "%.2f", Double(audio.count) / config.sampleRate)) s after \(trip == nil ? "a turn" : "barge-in"), \(String(format: "%.2f", voiced)) s voiced, keep \(keep), silence \(Int(levels.silence))")
                     events.append(.utterance(VoiceUtterance(wav: VoiceWAV.encode(samples: audio, sampleRate: Int(config.sampleRate)),
                                                             duration: Double(audio.count) / config.sampleRate,
                                                             voicedDuration: voiced),
