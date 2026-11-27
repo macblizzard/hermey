@@ -321,9 +321,12 @@ class AReplyWhileHeIsAwayHopsAndWaits(unittest.TestCase):
         self.assertIn("model.unreadCounts[botID] ?? 0", unread)
         self.assertIn("model.unreadBots.contains(botID) ? 1 : 0", unread,
                       "a bot marked unread without a count still has one turn waiting")
-        # One subscription, on the model's own publisher — no second notification system.
+        # One subscription per concern, on the publisher that owns it — no second notification
+        # system, and none per pet. The unread watch reads the model; the faces watch reads the
+        # store's `botFaces` and `botAvatars`, which is how a save reaches the pet.
         self.assertIn("store.model.objectWillChange", CONTROLLER)
-        self.assertEqual(1, CONTROLLER.count(".sink {"), "one watch, not one per pet")
+        self.assertEqual(2, CONTROLLER.count(".sink {"),
+                         "one watch per concern, not one per pet")
         self.assertNotIn("private var unread: Int", CONTROLLER,
                          "the controller must not keep a count of its own")
 
@@ -599,6 +602,72 @@ class ProjectFilePicksThemUp(unittest.TestCase):
         self.assertNotIn("NSScreenCaptureUsageDescription", PANEL + VIEW + CONTROLLER)
         self.assertNotIn("AXIsProcessTrusted", PANEL + VIEW + CONTROLLER)
         self.assertNotIn("CGRequestScreenCaptureAccess", PANEL + VIEW + CONTROLLER)
+
+
+class AFaceChangeReachesThePetWithoutARosterPass(unittest.TestCase):
+    """The save is when a pet's face changes, and the save does not move `botFaces`.
+
+    Editing a bot's drawn avatar — its shape, colour or material — while its classic face stays
+    empty leaves `store.botFaces` exactly as it was. `WorkspaceRoot`'s `.onChange(of: store.botFaces)`
+    therefore never fires, `sync()` never runs, and a pet that took its face at construction wore
+    the old body until a relaunch (owner, 0.1.688: "when updating the bot avatar, it should update
+    the pet as well"). The fix is the pet's explicit source: the controller holds the store, and
+    observes its two face maps directly. These guards pin that path.
+    """
+
+    @staticmethod
+    def _watch() -> str:
+        return CONTROLLER.split("private func watchFaces() {", 1)[1].split("private func refreshFaces", 1)[0]
+
+    @staticmethod
+    def _refresh() -> str:
+        return CONTROLLER.split("private func refreshFaces() {", 1)[1].split("\n    }\n", 1)[0]
+
+    def test_the_pet_faces_are_an_observed_source_not_a_snapshot(self):
+        attach = CONTROLLER.split("func attach(store:", 1)[1].split("func sync()", 1)[0]
+        self.assertIn("watchFaces()", attach, "the store's faces are subscribed at attach")
+        watch = self._watch()
+        self.assertIn("Publishers.CombineLatest(store.$botFaces, store.$botAvatars)", watch,
+                      "both maps: a drawn-avatar save changes only `botAvatars`")
+        self.assertIn(".sink {", watch, "a change in either map refreshes the pets")
+
+    def test_the_refresh_reads_the_live_maps(self):
+        refresh = self._refresh()
+        self.assertIn("store.botFaces[bot.id]?.raw", refresh)
+        self.assertIn("store.botAvatars[bot.id]", refresh,
+                      "the drawn document, read now — not a copy taken when the pet was built")
+        self.assertIn("pets[bot.id]?.updateFace(", refresh)
+
+    def test_the_refresh_reaches_the_drawn_document_the_pet_draws(self):
+        # What the pet draws: the whole document — body, colour, material — not just the classic
+        # string. The colour and the material travel with the definition, one fact.
+        self.assertIn("OpenBotAvatarView(definition: avatar.definition,", VIEW)
+        self.assertIn("color: avatar.color,", VIEW)
+        self.assertIn("material: avatar.material,", VIEW)
+
+    def test_the_refresh_rederives_the_hit_mask_from_the_same_document(self):
+        update = CONTROLLER.split("func updateFace(", 1)[1].split("/// Owns one floating panel", 1)[0]
+        self.assertIn("PetIconMask(identity: bot.id,", update)
+        self.assertIn("avatar: avatar,", update,
+                      "the click-through is the saved shape's alpha, not the old one's")
+
+    def test_a_repetition_stops_at_the_model(self):
+        # Both maps are re-read after every save, so the same face arrives twice: the second pass
+        # must not republish or rebuild anything.
+        update = CONTROLLER.split("func updateFace(", 1)[1].split("/// Owns one floating panel", 1)[0]
+        self.assertIn("guard model.face != face || model.avatar != avatar || model.state != state else { return }", update)
+
+    def test_the_phone_s_card_resolves_the_face_per_turn_too(self):
+        # The other platform with a pet: the Live Activity card. It cannot re-read its attributes
+        # mid-activity (ActivityKit fixes them at request), so the rule there is *resolve at request
+        # time from the live map* — a save shows on the next turn's card, no relaunch.
+        coordinator = (ROOT / "Apps" / "HermesMobile" / "Views" / "LiveActivityCoordinator.swift"
+                       ).read_text(encoding="utf-8")
+        self.assertIn("let document = faces(id)", coordinator,
+                      "the lookup happens now, not at attach")
+        self.assertIn("HermeyTurnAttributes(botName: name, face: faceForSelectedBot())", coordinator)
+        shell = (ROOT / "Apps" / "HermesMobile" / "HermesMobileApp.swift").read_text(encoding="utf-8")
+        self.assertIn("liveActivity.attach(to: app.model) { id in app.botAvatars[id] }", shell)
 
 
 if __name__ == "__main__":

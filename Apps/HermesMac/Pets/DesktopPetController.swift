@@ -30,7 +30,12 @@ private final class PetInstance {
     /// The face changed in the picker: redraw it and re-derive where its alpha is. A bot with a
     /// generated avatar is redrawn from its definition, and its hit area is the outline the
     /// definition draws rather than a picture's pixels.
+    ///
+    /// The same face arrives more than once — a save re-reads both maps and the subscription emits
+    /// on each — so a pass that reads what the pet already wears stops here: no republished model,
+    /// no rebuilt mask. (`BotAvatarDocument` is Hashable, and the classic face is a string.)
     func updateFace(_ face: String?, avatar: BotAvatarDocument? = nil, state: OpenBotAvatarState = .idle) {
+        guard model.face != face || model.avatar != avatar || model.state != state else { return }
         model.face = face
         model.avatar = avatar
         model.state = state
@@ -62,6 +67,18 @@ final class DesktopPetController: ObservableObject {
     /// made for: a re-pair builds a fresh model, and a watch on the old one would go quiet.
     private var unreadWatch: AnyCancellable?
     private var watchedModel: ObjectIdentifier?
+    /// The faces subscription: the store's own `botFaces` and `botAvatars`, observed directly, so a
+    /// face or avatar that changes anywhere (an editor save, a re-pair, a late load) reaches every
+    /// pet on screen without a roster pass having to happen around it.
+    ///
+    /// It is the pet's explicit source, in place of an environment it cannot read: a pet is a
+    /// floating `NSPanel` outside the main window's environment, so `BotAvatarLibrary` — the map the
+    /// in-window surfaces read — never reaches it. What it *can* see is this controller, and this
+    /// controller holds the store. That is also why it must not be the `WorkspaceRoot`'s
+    /// `.onChange(of: store.botFaces)` alone: editing a bot's drawn avatar while its classic face
+    /// stays empty leaves `botFaces` unchanged, so that pass never fires and the pet wears the old
+    /// shape, colour and material until a relaunch. The avatar map, observed here, does fire.
+    private var facesWatch: AnyCancellable?
 
     private init() {}
 
@@ -73,6 +90,7 @@ final class DesktopPetController: ObservableObject {
         self.store = store
         installObservers()
         watchUnread()
+        watchFaces()
         sync()
     }
 
@@ -103,16 +121,46 @@ final class DesktopPetController: ObservableObject {
             show(bot, face: store.botFaces[bot.id]?.raw, avatar: store.botAvatars[bot.id])
         }
 
-        // A face can change in the icon picker while its pet is on screen.
-        for bot in bots {
-            pets[bot.id]?.updateFace(store.botFaces[bot.id]?.raw,
-                                 avatar: store.botAvatars[bot.id],
-                                 state: OpenBotAvatarState(activity: store.activity(for: bot.id)))
-        }
+        // A face can change in the icon picker while its pet is on screen. The subscription keeps
+        // that true between roster passes too (see `watchFaces`); this pass covers the rest of a
+        // sync's reasons in one sweep.
+        refreshFaces()
 
         // A pet that appears while its bot already has something waiting wears the badge at once,
         // and takes the count as its baseline: no hop for a reply that predates the window.
         refreshUnread()
+    }
+
+    /// The pet's face source, observed: the store's `botFaces` and `botAvatars`, combined, every
+    /// pet refreshed when either changes.
+    ///
+    /// A save through `saveBotAvatar` re-reads both maps, so this is the path a save takes into the
+    /// pet — no roster pass, no relaunch, and no dependence on the classic face having changed at
+    /// all. The `dropFirst` keeps the attach-time pass (`sync`) as the only initial one; the
+    /// subscription fires from the first *change* onwards. A re-pair replaces the store, so the old
+    /// subscription is cancelled here before the new one is made — a sink left on a dead store would
+    /// write faces from a map nobody reads.
+    private func watchFaces() {
+        guard let store else { return }
+        facesWatch = Publishers.CombineLatest(store.$botFaces, store.$botAvatars)
+            .dropFirst()
+            .sink { [weak self] _ in
+                Task { @MainActor in self?.refreshFaces() }
+            }
+    }
+
+    /// Give every pet the face, the drawn avatar and the pose its bot wears right now.
+    ///
+    /// The reading happens once per pass — the maps cannot change mid-loop on this actor — and each
+    /// pet is updated through `PetInstance.updateFace`, which re-derives the hit mask from the same
+    /// document it hands the view, so the click-through can never disagree with the drawing.
+    private func refreshFaces() {
+        guard let store else { return }
+        for bot in store.model.bots {
+            pets[bot.id]?.updateFace(store.botFaces[bot.id]?.raw,
+                                     avatar: store.botAvatars[bot.id],
+                                     state: OpenBotAvatarState(activity: store.activity(for: bot.id)))
+        }
     }
 
     /// The app is going away: close the windows without touching the switches, so the pets come back
@@ -127,6 +175,7 @@ final class DesktopPetController: ObservableObject {
         observers.removeAll()
         unreadWatch = nil
         watchedModel = nil
+        facesWatch = nil
         ClientLog.note("pets stopped for quit", category: "pets")
     }
 
