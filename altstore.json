@@ -22,14 +22,14 @@
       "screenshots": [],
       "versions": [
         {
-          "version": "0.1.697",
-          "buildVersion": "697",
-          "date": "2026-11-27T21:37:39Z",
-          "localizedDescription": "The task board is on screen: a strip above the composer shows a bot's todo list live, opening while work is in progress and folding to 'Tasks n/n - done' when finished.",
-          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.697/Hermey-0.1.697-b697.ipa",
-          "size": 6380589,
+          "version": "0.1.698",
+          "buildVersion": "698",
+          "date": "2026-11-27T22:19:28Z",
+          "localizedDescription": "Every real defect from the feature audit, fixed: voice barge-in no longer storms and the reply is spoken for the right turn; a picture sent from one device now appears on the other after a paged resume; Send cannot double-fire; the update feed no longer dies when a hermeyd release is newest and host Try again works; pairing can no longer be minted through the tailscale proxy; the desktop pet's avatar animates and glass bodies shrink under marks. Needs hermeyd 0.8.28.",
+          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.698/Hermey-0.1.698-b698.ipa",
+          "size": 6390576,
           "minOSVersion": "17.0",
-          "sha256": "3c9d2e5389ab8e73ad8bf6fbf72ab7987211f7f7069f3bbf79d928648dca6c42"
+          "sha256": "5897ce7fc67dc1b224e4263a8934d08a86c63aa7e2908c4cc2449dbbcdde4b0d"
         }
       ],
       "appPermissions": {
@@ -43,10 +43,10 @@
   ],
   "news": [
     {
-      "title": "Hermes 0.1.697 (697)",
-      "identifier": "hermes-0.1.697-697",
-      "caption": "The task board is on screen: a strip above the composer shows a bot's todo list live, opening while work is in progress and folding to 'Tasks n/n - done' when finished.",
-      "date": "2026-11-27T21:37:39Z",
+      "title": "Hermes 0.1.698 (698)",
+      "identifier": "hermes-0.1.698-698",
+      "caption": "Every real defect from the feature audit, fixed: voice barge-in no longer storms and the reply is spoken for the right turn; a picture sent from one device now appears on the other after a paged resume; Send cannot double-fire; the update feed no longer dies when a hermeyd release is newest and host Try again works; pairing can no longer be minted through the tailscale proxy; the desktop pet's avatar animates and glass bodies shrink under marks. Needs hermeyd 0.8.28.",
+      "date": "2026-11-27T22:19:28Z",
       "tintColor": "#9A9AA0"
     }
   ],
