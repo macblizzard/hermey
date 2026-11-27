@@ -76,9 +76,11 @@ final class TranscriptDecorationAdoptTests: XCTestCase {
         let model = AppModel(client: host)
         await model.start()
         await model.select("s1")
-        XCTAssertEqual(model.transcript.map(\.id), ["c", "d"])
 
+        // The paged half fills — by the silent backfill that opens a conversation or by the
+        // explicit load; whichever lands first, wait for all four rows.
         await model.loadEarlierHistory()
+        await waitUntil { Set(model.transcript.map(\.id)) == Set(["a", "b", "c", "d"]) }
         XCTAssertEqual(model.transcript.map(\.id), ["a", "b", "c", "d"])
 
         // Delete `b` — a row of the older, already-paged half. The host's database has moved it;
