@@ -195,6 +195,16 @@ struct MacComposerBar: View {
                 pendingAttachmentsBar
             }
 
+            // The agent's own task list, pinned directly above the field. A long turn scrolls its
+            // rows off the top of the screen; this is the one place the checklist stays put.
+            if let board = model.taskBoard {
+                TaskChecklistView(board: board)
+                    .frame(maxWidth: Geometry.conversationMeasure)
+                    .padding(.horizontal, Geometry.readingInset)
+                    .padding(.top, 6)
+                    .frame(maxWidth: .infinity)
+            }
+
             Composer(text: $model.draft,
                      // A capsule over the transcript: no bar, no frame at rest.
                      floats: true,

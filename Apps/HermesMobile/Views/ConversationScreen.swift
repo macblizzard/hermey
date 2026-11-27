@@ -1216,6 +1216,14 @@ struct ConversationScreen: View {
                     .transition(.opacity)
             }
 
+            // The agent's own task list, pinned above the field: the running turn's checklist never
+            // scrolls away with the transcript. Drawn only when the session actually has a board.
+            if let board = model.taskBoard {
+                TaskChecklistView(board: board)
+                    .padding(.horizontal, Geometry.chatGutter)
+                    .padding(.top, 4)
+            }
+
             // The model and how full its context is: inside the composer, in the row the paperclip
             // and the send arrow live in, as one pill that opens this bot's model picker. Same
             // view, same formatter as the desktop's pill — and a narrow phone drops the count and

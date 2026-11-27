@@ -6823,6 +6823,17 @@ public final class AppModel: ObservableObject {
             ? liveToolEntries : []
     }
 
+    /// The agent's task board for the conversation on screen.
+    ///
+    /// Recomputed from the rows themselves — the running turn's cards first, then the loaded
+    /// transcript — so a resume, a paging adopt or a bot switch all end at the board the host
+    /// actually has. Never accumulated: a closed loop of appends is exactly what goes stale when
+    /// history is reloaded under the reader. Nil means the session has no board, and the strip
+    /// above the composer is not drawn at all.
+    public var taskBoard: TodoBoard? {
+        TodoBoard.board(from: transcript, live: liveToolEntries)
+    }
+
     /// One live card as the row the transcript keeps.
     ///
     /// The row keeps the call's arguments *and* its result, so opening it after the turn still
