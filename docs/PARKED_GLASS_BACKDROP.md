@@ -7,7 +7,8 @@ Status: **parked by Mo on 2026-11-27**, not merged, not in any release.
 - Worktree on this host: `/root/jobs/hermey-glass8` (may be pruned; recreate from the branch).
 - Proof images: `/root/jobs/glass8-proof/final/cat-idle-200pt-page.png` (after) and
   `-page-studio.png` (before), also published at
-  `https://hermes.corvus-vibes.ts.net:9446/cody/2026-11-27-glass-backdrop-*.png`.
+  copied into the shared file drop as `2026-11-27-glass-backdrop-refracting-page.png` and
+  `2026-11-27-glass-backdrop-before-studio.png` (served on the tailnet, not in this repo).
 
 ## Why it is parked rather than merged
 

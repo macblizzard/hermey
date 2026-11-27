@@ -317,13 +317,6 @@ seconds, for up to 30 minutes, and stops as soon as the file is final (`resolved
 `done` or `error`). To update a card, **rewrite the same file**. Never post a second `::card` line for the
 same card: the attributes of a line already sent cannot change.
 
-**Closing a card you wrote earlier in the session costs a `read_file` first.** The write tool refuses to
-overwrite a file whose current content this task has not read — so the resolve step (`resolved` set,
-`status.state` `done`) bounces with "has not seen its full current content" even though you created the
-file yourself a moment ago. Read it, then rewrite with the merged JSON; or use `patch` on the two fields.
-Do the read *before* the approval message arrives if you can: a card that stays stuck on
-`awaiting-approval` after the work is done reads as an ignored tap.
-
 ### Previews
 
 `::preview{file="page.html"}` on its own line shows a workspace HTML file in a sandboxed frame. The

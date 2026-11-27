@@ -9,6 +9,16 @@ from the repository's history and the published release pages.
 
 ## [Unreleased]
 
+## [0.1.691] — 2026-11-27
+
+### Fixed
+- **The iPhone's voice loop should hear you now.** Its audio session ran in `.voiceChat` mode, the system
+  voice-processing input, while the dictation recorder beside it — which works on the same phone — uses
+  `.spokenAudio`. The loop now uses the working mode, tunes its listening floor for a quiet stream instead of a
+  fixed constant, and logs the RMS and peak of its first five blocks so a silent stream is visible rather than
+  guessed at. The Mac's numbers are unchanged.
+- **The parked-glass note no longer carries a tailnet address** (it failed the repo's secret scan).
+
 ## [0.1.690] — 2026-11-27
 
 ### Fixed
