@@ -7,6 +7,14 @@ Each release's section may carry both its release notes and the per-change entri
 recorded as the work landed; entries before 0.1.610 were given their version headings
 from the repository's history and the published release pages.
 
+## [0.1.699] — 2026-11-27
+
+### Fixed
+- **The task strip stops when the work stops.** A finished board now leaves no strip above the composer
+  instead of folding to a summary line.
+- **A small board no longer fills the screen.** The expanded list was given an unbounded height ceiling, so a
+  two-row checklist claimed most of the phone; it now hugs its rows (and still scrolls past eight).
+
 ## [0.1.698] — 2026-11-27
 
 Everything from the seven-area feature audit that was a real defect. Each fix landed with a test that fails
