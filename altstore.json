@@ -22,14 +22,14 @@
       "screenshots": [],
       "versions": [
         {
-          "version": "0.1.696",
-          "buildVersion": "696",
-          "date": "2026-11-27T20:43:53Z",
-          "localizedDescription": "Security pass: a CI tag name can no longer run code, plaintext sockets are refused off loopback, the insecure-TLS flag is loud and explicit, and the dependencies are current (SQLite CVE, url 2.5.9). Ships with hermeyd 0.8.27.",
-          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.696/Hermey-0.1.696-b696.ipa",
-          "size": 6359348,
+          "version": "0.1.697",
+          "buildVersion": "697",
+          "date": "2026-11-27T21:37:39Z",
+          "localizedDescription": "The task board is on screen: a strip above the composer shows a bot's todo list live, opening while work is in progress and folding to 'Tasks n/n - done' when finished.",
+          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.697/Hermey-0.1.697-b697.ipa",
+          "size": 6380589,
           "minOSVersion": "17.0",
-          "sha256": "43cdb2800431828262547e7def487a8e31515e984766a13d2d77ca44de4fa4f5"
+          "sha256": "3c9d2e5389ab8e73ad8bf6fbf72ab7987211f7f7069f3bbf79d928648dca6c42"
         }
       ],
       "appPermissions": {
@@ -43,10 +43,10 @@
   ],
   "news": [
     {
-      "title": "Hermes 0.1.696 (696)",
-      "identifier": "hermes-0.1.696-696",
-      "caption": "Security pass: a CI tag name can no longer run code, plaintext sockets are refused off loopback, the insecure-TLS flag is loud and explicit, and the dependencies are current (SQLite CVE, url 2.5.9). Ships with hermeyd 0.8.27.",
-      "date": "2026-11-27T20:43:53Z",
+      "title": "Hermes 0.1.697 (697)",
+      "identifier": "hermes-0.1.697-697",
+      "caption": "The task board is on screen: a strip above the composer shows a bot's todo list live, opening while work is in progress and folding to 'Tasks n/n - done' when finished.",
+      "date": "2026-11-27T21:37:39Z",
       "tintColor": "#9A9AA0"
     }
   ],
