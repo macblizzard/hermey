@@ -228,10 +228,11 @@ final class BotAvatarGlassDrawer: NSObject, MTKViewDelegate {
 
     /// The next frame's numbers and silhouette, from the surface the view decided on.
     ///
-    /// `maskKey` is the *body* — `OpenBotAvatarModel.bodyKey`, the definition's own outline — and the
-    /// drawer keeps it beside the silhouette it is handed, because the pose in `path` moves every
-    /// frame while the shape does not: the mask must be rebuilt for a new body and must not be
-    /// rebuilt for a breath.
+    /// `maskKey` is the body **and the pose of it**: the definition's own outline
+    /// (`OpenBotAvatarModel.bodyKey`) in front, then the buckets of the dimensions that move that
+    /// outline (`OpenBotAvatarPose.silhouetteKey`). The drawer keeps the key beside the silhouette it
+    /// is handed, because the texture is a picture of one outline — so a new body rebuilds it, a body
+    /// that has turned, hopped or squashed rebuilds it, and a breath, a blink or a ribbon does not.
     func update(_ view: MTKView?, surface: BotAvatarGlassSurface, path: Path, maskKey: String) {
         guard let view, HermeyGlassEngine.shared.isReady else { return }
         self.surface = surface
