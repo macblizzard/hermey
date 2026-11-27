@@ -113,7 +113,7 @@ class TheInstallIsVerifiedAndReversible(unittest.TestCase):
     def setUp(self) -> None:
         self.post = block(UPDATE_RS, "pub async fn post_update(", "// ---- tests")
         self.stage = block(UPDATE_RS, "async fn stage_and_install(", "/// The whole background half")
-        self.install = block(UPDATE_RS, "fn install(cfg: &Config) -> Result<(), StepError> {",
+        self.install = block(UPDATE_RS, "fn install(cfg: &Config, target: &str) -> Result<(), StepError> {",
                              "async fn fetch_bytes")
 
     def test_the_press_is_answered_before_the_download_starts(self) -> None:
@@ -151,6 +151,12 @@ class TheInstallIsVerifiedAndReversible(unittest.TestCase):
         self.assertLess(self.install.index("std::fs::copy(&cfg.bin, cfg.prev())"),
                         self.install.index("std::fs::rename(cfg.staged(), &cfg.bin)"),
                         "a failure between the two must leave the running binary in place")
+        # And the rollback record comes before all of it: a boot that runs the new binary must find
+        # a `pending` record with it, and a state write that fails must refuse the swap.
+        self.assertIn("write_state(&cfg.state_path(), &record)", self.install)
+        self.assertLess(self.install.index("write_state(&cfg.state_path(), &record)"),
+                        self.install.index("std::fs::copy(&cfg.bin, cfg.prev())"),
+                        "the record is the rollback mechanism; it is written before any swap")
         self.assertIn("std::fs::rename(cfg.staged(), &cfg.bin)", self.install,
                       "one atomic step, or a half-written binary is a host that does not boot")
         # Staged beside the binary, so the rename cannot cross a filesystem.
@@ -208,7 +214,7 @@ class TheRollbackNeedsNoNetwork(unittest.TestCase):
         for forbidden in ("reqwest", "http_client", "fetch_bytes", "latest_release", "Release"):
             self.assertFalse(forbidden in self.boot,
                              f"the rollback path must not need the network ({forbidden})")
-        restore = block(UPDATE_RS, "fn replace_file(", "/// Keep the running build beside")
+        restore = block(UPDATE_RS, "fn replace_file(", "/// Record the pending install")
         for forbidden in ("reqwest", "http", "url", "Release"):
             self.assertFalse(forbidden in restore)
 

@@ -11,9 +11,10 @@ The release page carries an unsigned `.ipa`; you sign it with your own certifica
 1. Install **AltStore** ([altstore.io](https://altstore.io)) or **SideStore**
    ([sidestore.io](https://sidestore.io)) following their setup for your device.
 2. Add this source to the app:
-   `https://github.com/macblizzard/hermey/releases/latest/download/altstore.json`
-   (It is a release asset on purpose: the latest release always serves the newest build, with no
-   host of our own in the loop.)
+   `https://macblizzard.github.io/hermey-downloads/altstore.json`
+   (The Pages document is the app feed and is rewritten by every publish. The release-asset URL
+   answers 404 whenever the newest release is a `hermeyd-v*` one — the host's own release series,
+   which carries no `altstore.json` asset — so it is not a source a phone can rely on.)
 3. Install **Hermey** from the source.
 
 If you prefer to install the `.ipa` by hand, any signing tool that accepts an unsigned IPA works

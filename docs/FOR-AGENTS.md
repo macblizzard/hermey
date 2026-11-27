@@ -135,8 +135,10 @@ Send the human these, verbatim:
 
 - **iOS** — install AltStore ([altstore.io](https://altstore.io)) or SideStore
   ([sidestore.io](https://sidestore.io)), then add this source in its *Sources* tab:
-  `https://github.com/macblizzard/hermey/releases/latest/download/altstore.json`
-  and install **Hermey** from it. Unsigned builds need re-signing every ~7 days with a free Apple ID.
+  `https://macblizzard.github.io/hermey-downloads/altstore.json`
+  (the Pages document — the release-asset URL 404s whenever the newest release is a `hermeyd-v*`
+  one) and install **Hermey** from it. Unsigned builds need re-signing every ~7 days with a free
+  Apple ID.
 - **macOS** — download the disk image from <https://macblizzard.github.io/hermey-downloads/>
   (`Hermey-macOS-<version>.dmg`, the newest build; the release page attaches the same file under the
   versioned name only), open it, drag **Hermey** onto the `Applications` shortcut, then right-click →

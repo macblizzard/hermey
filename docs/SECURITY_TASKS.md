@@ -116,6 +116,20 @@ Nothing critical or high remains. What the sweep still prints, and why each line
   `pyproject.toml` at the root; the Python here is the stdlib plus the release tools' optional
   PyNaCl.
 
+## Known limitations — documented, not fixed
+
+- **Mac Sparkle installs can never pass the code-signature check, because the app is ad-hoc
+  signed.** `.github/workflows/ci.yml` builds with `CODE_SIGNING_ALLOWED=NO` and only ad-hoc signs
+  (`codesign --force --sign -`) before the DMG is packed. Sparkle 2 refuses to install an update
+  whose code signature it cannot verify against the *running* app: the appcast's EdDSA signature is
+  valid, but the app-signature half of the check cannot succeed, so in-app Mac updates fail after
+  the download — every time, forever, on every machine. Nothing here fixes that; in-app Mac updates
+  remain unusable by design of the current build. What would fix it: a paid Apple Developer
+  account, signing the app (and every shipped build) with a **Developer ID Application**
+  certificate, and **notarising** the DMG (`notarytool` + `stapler`) so Sparkle's verification chain
+  has a trusted root — plus `SUPublicEDKey`/`SUFeedURL` staying as they are. Until that exists, the
+  Mac channel is the download page, not Sparkle.
+
 ## Re-running
 
     bash ~/.hermes/profiles/cody/skills/software-development/code-audit/scripts/audit.sh \
