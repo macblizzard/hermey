@@ -22,14 +22,14 @@
       "screenshots": [],
       "versions": [
         {
-          "version": "0.1.693",
-          "buildVersion": "693",
-          "date": "2026-11-27T11:45:06Z",
-          "localizedDescription": "Voice loop: it now ends a sentence against the voice it actually heard, so pausing sends your turn; tapping stop mid-sentence keeps what you said; and saying stop is heard on every path. Plus the update feed now comes from the release asset, with no 10-minute cache.",
-          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.693/Hermey-0.1.693-b693.ipa",
-          "size": 6328490,
+          "version": "0.1.694",
+          "buildVersion": "694",
+          "date": "2026-11-27T12:23:50Z",
+          "localizedDescription": "The update prompt arrives on its own: every launch and return to the front asks the feed, and Check now can no longer say up to date when a newer build exists. The row now names what happened instead of one sentence for six outcomes.",
+          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.694/Hermey-0.1.694-b694.ipa",
+          "size": 6333389,
           "minOSVersion": "17.0",
-          "sha256": "0ef0d4172e6e8a37eaf7f83759b251ce5b40f583bbd576c64c8f80bd9f85f9aa"
+          "sha256": "da66c9db88fe1cb68059165d91435cca00804005abb546794a1e4c62a773629d"
         }
       ],
       "appPermissions": {
@@ -43,10 +43,10 @@
   ],
   "news": [
     {
-      "title": "Hermes 0.1.693 (693)",
-      "identifier": "hermes-0.1.693-693",
-      "caption": "Voice loop: it now ends a sentence against the voice it actually heard, so pausing sends your turn; tapping stop mid-sentence keeps what you said; and saying stop is heard on every path. Plus the update feed now comes from the release asset, with no 10-minute cache.",
-      "date": "2026-11-27T11:45:06Z",
+      "title": "Hermes 0.1.694 (694)",
+      "identifier": "hermes-0.1.694-694",
+      "caption": "The update prompt arrives on its own: every launch and return to the front asks the feed, and Check now can no longer say up to date when a newer build exists. The row now names what happened instead of one sentence for six outcomes.",
+      "date": "2026-11-27T12:23:50Z",
       "tintColor": "#9A9AA0"
     }
   ],
