@@ -211,7 +211,7 @@ class Endpointing(unittest.TestCase):
             self.assertNotIn(literal, AUDIO, f"{literal} belongs in VoiceVADConfig")
         # The engine asks the config for its levels; the multipliers and bounds stay in one struct.
         self.assertIn("config.listeningLevels(floor:", AUDIO)
-        self.assertIn("floor * bargeMultiplier", VAD)
+        self.assertIn("triggerFloor * bargeMultiplier", VAD)
         self.assertIn("config.endpointSilenceBlocks", AUDIO)
 
     def test_a_blip_is_not_a_turn(self) -> None:
@@ -511,35 +511,81 @@ class TheSilentStream(unittest.TestCase):
         """The Mac hears the same trigger and the same silence boundary as before this change."""
         config = swift_body(VAD, "public struct VoiceVADConfig")
         for field in ("silenceRMS: Double = 200", "bargeMultiplier: Double = 3.0",
-                      "measuredFloorMinimum: Double = 200", "listeningTriggerFloor: Double = 400"):
+                      "measuredFloorMinimum: Double = 200", "listeningTriggerFloor: Double = 400",
+                      "endpointSilenceMultiplier: Double = 1.5",
+                      "endpointSilenceMinimum: Double = 60"):
             self.assertIn(field, config)
         silence_rms, multiplier, floor_min, trigger_floor = 200.0, 3.0, 200.0, 400.0
+        endpoint_multiplier, endpoint_min = 1.5, 60.0
         for floor in range(200, 4001, 25):
             # `max(floor * bargeMultiplier, silenceRMS * 2)` — the expression this replaced.
             before = max(floor * multiplier, silence_rms * 2)
             after = max(floor * multiplier, trigger_floor)
             self.assertEqual(before, after, f"trigger changed for a desktop floor of {floor}")
-            self.assertEqual(min(silence_rms, max(floor, floor_min)), silence_rms)
+            # The endpoint boundary is now derived, but every floor a Mac can measure (clamped to
+            # 200) lands on the old constant: the cap is the value the Mac always used.
+            old_silence = min(silence_rms, max(floor, floor_min))
+            new_silence = min(silence_rms, max(floor * endpoint_multiplier, endpoint_min))
+            self.assertEqual(old_silence, silence_rms, f"the old boundary moved at floor {floor}")
+            self.assertEqual(new_silence, silence_rms, f"the Mac boundary moved at floor {floor}")
 
     def test_the_listening_trigger_follows_the_measured_floor(self) -> None:
         # The engine asks the config for both levels from the floor it measured, and hands the
         # silence boundary to the gate — the fixed `silenceRMS * 2` trigger is gone.
         listening = AUDIO.split("case .listening:", 1)[1].split("case .thinking, .speaking:", 1)[0]
-        self.assertIn("config.listeningLevels(floor: detector.quietFloor)", listening)
+        # A measured detector floor while a turn has run, and the stream's own first blocks when
+        # it has not: at the head of a conversation the detector is not fed during `.listening`.
+        self.assertIn("detector.isFloorLocked", listening)
+        self.assertIn("? detector.quietFloor", listening)
+        self.assertIn("config.floorFromAmbient(listenAmbient)", listening)
+        self.assertIn("config.listeningLevels(triggerFloor: detector.quietFloor, roomFloor: roomFloor)",
+                      listening)
         self.assertIn("gate.feed(rms: rms, trigger: levels.trigger, silence: levels.silence)",
                       listening)
         self.assertNotIn("silenceRMS * 2", self.code(AUDIO))
         self.assertNotIn("silenceRMS * 2", self.code(VAD))
         # The rule is a multiplier over the floor, floored at a low absolute bound — not a constant.
-        levels = swift_body(VAD, "public func listeningLevels(floor: Double)")
-        self.assertIn("max(floor * bargeMultiplier, listeningTriggerFloor)", levels)
-        self.assertIn("min(silenceRMS, max(floor, measuredFloorMinimum))", levels)
+        levels = swift_body(VAD, "public func listeningLevels(triggerFloor: Double, roomFloor: Double)")
+        self.assertIn("max(triggerFloor * bargeMultiplier, listeningTriggerFloor)", levels)
+        boundary = swift_body(VAD, "public func endpointSilence(floor: Double)")
+        self.assertIn("min(silenceRMS, max(floor * endpointSilenceMultiplier, endpointSilenceMinimum))",
+                      boundary)
         # A phone's tuning moves the two *bounds* only: 8 RMS of floor is allowed, and 120 is the
         # lowest trigger. The multipliers are untouched, so the trigger still tracks the room.
         tuned = swift_body(VAD, "public func tunedForQuietInput()")
         self.assertIn("copy.measuredFloorMinimum = 8", tuned)
         self.assertIn("copy.listeningTriggerFloor = 120", tuned)
         self.assertNotIn("bargeMultiplier", tuned)
+
+    def test_the_endpoint_boundary_sits_between_the_room_and_speech(self) -> None:
+        """The 0.1.691 log: `vad: speech started, rms 130`, then no `endpoint:` at all.
+
+        The boundary was the floor clamped to 8 while the room's own blocks read 15–28, so 600 ms
+        of quiet could never accumulate — the utterance needed a room quieter than the room. The
+        boundary must be derived above that floor and below speech, it must never exceed the old
+        `silenceRMS`, and every endpoint line must name the level it used.
+        """
+        for floor in range(8, 81):
+            silence = min(200, max(floor * 1.5, 60))
+            self.assertGreater(silence, floor,
+                               f"at floor {floor} the boundary collapsed back onto the room")
+            self.assertLess(silence, 130, f"at floor {floor} the boundary rose into the speech")
+        # The owner's own numbers: 28 of room, 130 of speech.
+        self.assertGreater(min(200, max(28 * 1.5, 60)), 28)
+        self.assertLess(min(200, max(28 * 1.5, 60)), 130)
+
+        # No calibration ran before speech, so the floor is read from the first blocks themselves.
+        floor = swift_body(VAD, "public func floorFromAmbient(_ blocks: [Double])")
+        # The same estimator the barge detector uses — the 90th percentile of the quiet blocks.
+        self.assertIn("(Double(sorted.count) * 0.9)", floor)
+        self.assertIn("max(sorted[max(0, index)], measuredFloorMinimum)", floor)
+
+        # The log carries the number, so the next report is evidence rather than a story.
+        endpoints = [line for line in AUDIO.splitlines()
+                     if "endpoint: " in line and "logFromAudioThread" in line]
+        self.assertEqual(len(endpoints), 2, "both endpoint paths must log")
+        for line in endpoints:
+            self.assertIn("silence \\(Int(", line)
 
 
 if __name__ == "__main__":
