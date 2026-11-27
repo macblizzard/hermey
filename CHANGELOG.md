@@ -9,6 +9,17 @@ from the repository's history and the published release pages.
 
 ## [Unreleased]
 
+## [0.1.690] — 2026-11-27
+
+### Fixed
+- **The iPhone's voice loop says what it is doing, and its control looks like what it is.** It drew a plain
+  microphone while listening, one glyph away from the dictation mic beside it — and when the loop failed to start
+  the strip read "Voice stopped" with no reason, so a failure looked like nothing happening. The loop now stays in
+  the waveform family in every state, a failure prints its sentence, and every step of the start path is logged
+  under `voice`: permission, audio session, input format, tap, engine, first buffer, voice detection, endpoint,
+  transcription and each phase change.
+- **The bundled agent-cards skill matches the shared copy again** (it had drifted, which failed a guard).
+
 ## [0.1.689] — 2026-11-27
 
 ### Added
