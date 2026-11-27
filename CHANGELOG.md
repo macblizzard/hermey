@@ -7,6 +7,20 @@ Each release's section may carry both its release notes and the per-change entri
 recorded as the work landed; entries before 0.1.610 were given their version headings
 from the repository's history and the published release pages.
 
+## [0.1.695] — 2026-11-27
+
+### Added
+- **Attachments travel between your devices.** A photo sent from the phone was stored on the host and left
+  behind as a bare path, so the Mac showed a sentence with a filename in it. Now an `@image:` reference draws as
+  a thumbnail you can tap to open full size, and a `@file:` reference draws as a chip with its name, type and
+  size — on the phone and on the Mac, in the same conversation, both directions.
+- The host serves those files itself (`GET /v1/attachments`), scoped to the profile's own `images/` and
+  `attachments/` folders, refusing traversal, other profiles, symlinks and anything over 32 MiB; bytes are
+  cached per device so a relaunch still draws what it has seen.
+
+### Changed
+- **`hermeyd` 0.8.26** — carries the attachment route.
+
 ## [0.1.694] — 2026-11-27
 
 ### Fixed
