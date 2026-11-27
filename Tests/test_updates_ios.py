@@ -50,7 +50,7 @@ class TheCheckerIsSharedAndReadsTheFeed(unittest.TestCase):
                           f"AvailableUpdate must carry {field!r}")
 
     def test_it_reads_the_altstore_source_and_its_fallback(self):
-        self.assertIn("https://macblizzard.github.io/hermey-downloads/altstore.json", self.source)
+        self.assertIn("https://github.com/macblizzard/hermey/releases/latest/download/altstore.json", self.source)
         self.assertIn("https://macblizzard.github.io/hermey-downloads/mac.json", self.source)
         # The fallback is only reached after the first fails, so the source must be tried first.
         order = self.source.index("altstore.json") - self.source.index("mac.json")

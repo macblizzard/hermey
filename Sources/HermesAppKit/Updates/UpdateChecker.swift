@@ -88,7 +88,7 @@ public final class UpdateChecker: ObservableObject {
 
     /// The AltStore-style source GitHub Pages serves. The iOS entry is the truth for this platform:
     /// it names the IPA, while `mac.json` names the DMG.
-    public static let sourceURL = URL(string: "https://macblizzard.github.io/hermey-downloads/altstore.json")
+    public static let sourceURL = URL(string: "https://github.com/macblizzard/hermey/releases/latest/download/altstore.json")
 
     /// The notifier feed, used only when the AltStore document cannot be fetched or parsed. Both are
     /// written by one publish from one measurement, so either carries the same build.
