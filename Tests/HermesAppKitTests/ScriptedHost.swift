@@ -364,6 +364,35 @@ final class ScriptedHost: GatewayClientProtocol, @unchecked Sendable {
     func interrupt(session: SessionID) async throws {}
     func rewind(session: SessionID, toRowID: Int64, then text: String) async throws {}
 
+    // MARK: Retires
+
+    /// Whether this host has the bridge's retire routes. Off by default (the protocol's own
+    /// unpaired default), so no existing fixture's behaviour moves; a test that drives an edit or
+    /// a delete turns it on.
+    var bridge = false
+    var bridgeAvailable: Bool { bridge }
+
+    /// Every `truncateMessages`, and how long each takes — a test that must look at the state
+    /// *while* the host is still working on a retire sets the delay.
+    private(set) var truncateCalls: [Int64] = []
+    var truncateDelay: Duration?
+    /// Every `deleteMessages`.
+    private(set) var deleteCalls: [[Int64]] = []
+
+    func truncateMessages(bot: String, session: SessionID, fromMessageID: Int64) async throws
+        -> MessageRetireResult {
+        truncateCalls.append(fromMessageID)
+        if let truncateDelay { try? await Task.sleep(for: truncateDelay) }
+        return MessageRetireResult(bot: bot, session: session, retired: 1, displayCount: 3)
+    }
+
+    func deleteMessages(bot: String, session: SessionID, messageIDs: [Int64]) async throws
+        -> MessageRetireResult {
+        deleteCalls.append(messageIDs)
+        return MessageRetireResult(bot: bot, session: session, retired: messageIDs.count,
+                                   displayCount: 3)
+    }
+
     // MARK: Rooms
 
     /// The room list this host answers with, and each room's log after the highest `seq` asked for.

@@ -95,7 +95,10 @@ class TheGroupListIsSplicedNotRebuilt(unittest.TestCase):
         self.assertNotIn("map", detect)
 
     def test_visibility_is_spliced_the_same_way(self) -> None:
-        rows = body(ROWS, "public func rows(_ entries: [TranscriptEntry],\n                     showToolCalls")
+        # The cache is told the transcript generation as well (`AppModel.transcriptGeneration`),
+        # because a rewrite that keeps the ids — the attachment decoration pass — is invisible to
+        # the splice check without it.
+        rows = body(ROWS, "public func rows(_ entries: [TranscriptEntry],\n                     generation: UInt64,\n                     showToolCalls")
         self.assertIn("filter(Array(entries[0..<count])) + self.rows", rows)
         self.assertIn("self.rows + filter(Array(entries[(entries.count - count)...]))", rows)
         self.assertNotIn("TranscriptVisibility.rows(entries,\n                                             showToolCalls: showToolCalls,\n                                             showReasoning: showReasoning)\n        self.entries = entries\n        self.rows = done", rows)

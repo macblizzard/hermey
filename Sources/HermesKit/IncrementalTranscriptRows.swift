@@ -33,6 +33,10 @@ public final class TranscriptRowCache {
     private var entries: [TranscriptEntry] = []
     private var headRows: [TranscriptRow] = []
     private var running: Set<String> = []
+    /// The model's transcript generation these rows were built from. A rewrite that keeps the count
+    /// and both end ids (a re-decoration, a resume of an identical page) is invisible to the id
+    /// comparison, so only the generation can say the rows must be rebuilt.
+    private var generation: UInt64 = 0
     /// Whether `headRows` has ever been built, so an empty transcript is not confused with a virgin
     /// cache.
     private var built = false
@@ -40,17 +44,24 @@ public final class TranscriptRowCache {
     public init() {}
 
     /// The rows for `entries` plus any live cards, regrouping only what changed.
-    public func rows(_ entries: [TranscriptEntry], running: Set<String> = []) -> [TranscriptRow] {
-        rows(entries, appending: [], running: running)
+    ///
+    /// `generation` is the transcript generation these rows came from: a change that keeps the count
+    /// and the end ids but bumps the generation is a rewrite in place (a re-decorated page), and the
+    /// only answer that is safe is the full rebuild.
+    public func rows(_ entries: [TranscriptEntry],
+                     generation: UInt64,
+                     running: Set<String> = []) -> [TranscriptRow] {
+        rows(entries, generation: generation, appending: [], running: running)
     }
 
     /// `entries` with `tail` on the end, without copying the whole list when `tail` is empty.
     public func rows(_ entries: [TranscriptEntry],
+                     generation: UInt64,
                      appending tail: [TranscriptEntry],
                      running: Set<String> = []) -> [TranscriptRow] {
         defer { TranscriptBuildMeter.buildFinished() }
         return TranscriptBuildMeter.measure(\.groupingNS, note: "group") {
-            regroupHead(entries, running: running)
+            regroupHead(entries, generation: generation, running: running)
             guard !tail.isEmpty else { return headRows }
             // The run the tail can still join: the head's trailing tool calls, which occupy exactly
             // one row (a lone card, or their run).
@@ -67,9 +78,10 @@ public final class TranscriptRowCache {
 
     // MARK: The head
 
-    private func regroupHead(_ entries: [TranscriptEntry], running: Set<String>) {
+    private func regroupHead(_ entries: [TranscriptEntry], generation: UInt64, running: Set<String>) {
         if built {
-            switch TranscriptSplices.detect(previous: self.entries, entries: entries) {
+            switch TranscriptSplices.detect(previous: self.entries, entries: entries,
+                                            sameGeneration: generation == self.generation) {
             case .unchanged:
                 if running != self.running { headRows = patchRunning(running) }
             case .appended(let count):
@@ -84,6 +96,7 @@ public final class TranscriptRowCache {
         }
         self.entries = entries
         self.running = running
+        self.generation = generation
         self.built = true
     }
 
@@ -174,11 +187,17 @@ public final class TranscriptVisibilityCache {
     private var rows: [TranscriptEntry] = []
     private var showToolCalls: Bool?
     private var showReasoning: Bool?
+    /// The transcript generation these rows were filtered from. A rewrite that keeps the count and
+    /// both end ids (a re-decorated page) is invisible to the id comparison, so only the generation
+    /// can say the filter has to run again.
+    private var generation: UInt64 = 0
     private var built = false
 
     public init() {}
 
+    /// `generation` is the transcript generation these rows came from; see `TranscriptSplices`.
     public func rows(_ entries: [TranscriptEntry],
+                     generation: UInt64,
                      showToolCalls: Bool,
                      showReasoning: Bool) -> [TranscriptEntry] {
         if !built || showToolCalls != self.showToolCalls || showReasoning != self.showReasoning {
@@ -190,11 +209,14 @@ public final class TranscriptVisibilityCache {
             self.rows = fresh
             self.showToolCalls = showToolCalls
             self.showReasoning = showReasoning
+            self.generation = generation
             self.built = true
             return fresh
         }
+        let sameGeneration = generation == self.generation
         let done: [TranscriptEntry]
-        switch TranscriptSplices.detect(previous: self.entries, entries: entries) {
+        switch TranscriptSplices.detect(previous: self.entries, entries: entries,
+                                        sameGeneration: sameGeneration) {
         case .unchanged:
             return self.rows
         case .appended(let count):
@@ -209,6 +231,7 @@ public final class TranscriptVisibilityCache {
         }
         self.entries = entries
         self.rows = done
+        self.generation = generation
         return done
     }
 

@@ -213,6 +213,11 @@ struct MacComposerBar: View {
                      placeholder: "Message \(composerTitle)",
                      isSending: model.isStreaming,
                      isDisabled: model.selectedSessionID == nil,
+                     // A pending attachment is sendable on its own: with the arrow refusing an
+                     // empty draft that carries files, an attachment-only message had no door on
+                     // the Mac while the store's own `canSend` (the menu item, retry) allowed it —
+                     // the same rule the phone's composer passes.
+                     hasAttachments: !model.pendingAttachments.isEmpty,
                      // One audio control, immediately left of the send arrow: tap opens the
                      // hands-free conversation, hold dictates. Drawn only when this window is
                      // paired — a ticket-only pairing cannot mint the ticket every request needs.
@@ -254,7 +259,12 @@ struct MacComposerBar: View {
                      attachPopoverContent: AnyView(
                         MacAttachmentMenu(model: model, isPresented: $showsAttachmentMenu)
                      ),
-                     onCommand: runCommand)
+                     onCommand: runCommand,
+                     // Exactly what `runCommand` answers, and nothing more: `/status` and
+                     // `/memory` are not native here, so they fall through and are sent to the
+                     // host rather than dead-looping in the field.
+                     nativeActions: [.help, .newSession, .resetConversation, .compact,
+                                     .model, .reasoning])
                 // The card is its content: one row of text and controls, the hint under it. A
                 // fixed resting height used to hand the slack to the field, which left the
                 // paperclip and the send arrow hanging below the line of text they act on.
