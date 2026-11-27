@@ -7,6 +7,14 @@ Each release's section may carry both its release notes and the per-change entri
 recorded as the work landed; entries before 0.1.610 were given their version headings
 from the repository's history and the published release pages.
 
+## [0.1.697] — 2026-11-27
+
+### Added
+- **The task board is on screen.** Every long task a bot runs already records a `todo_list` — the app never drew
+  it. A strip now sits directly above the composer on both the phone and the Mac: `Tasks 3/12` with one row per
+  item, ticking live as the bot updates them, opening itself while something is in progress and folding to
+  `Tasks 12/12 · done` when it is finished. Tap to open or close it. Nothing is drawn when a bot has no board.
+
 ## [0.1.696] — 2026-11-27
 
 ### Security
