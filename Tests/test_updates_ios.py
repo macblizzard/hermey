@@ -105,12 +105,12 @@ class ComparisonsAndRememberedDecisions(unittest.TestCase):
         self.assertIn("!manual, !atLaunch", self.check)
         # ...and the launch check is remembered, so the foreground notification a second later is
         # not a second request.
-        record = block(self.check, "let found = await latestUpdate()", "guard let found else")
+        record = block(self.check, "let read = await latestUpdate()", "guard let found = read.installable else")
         self.assertIn("defaults.set(now, forKey: DefaultsKey.lastCheck)", record)
         self.assertIn("if !manual {", record)
 
     def test_a_manual_check_always_reaches_the_feed(self):
-        manual_path = block(self.check, "let found = await latestUpdate()", "guard found.build > currentBuild")
+        manual_path = block(self.check, "let read = await latestUpdate()", "guard found.build > currentBuild")
         self.assertIn("if !manual {", manual_path)
         self.assertIn("defaults.set(now, forKey: DefaultsKey.lastCheck)", manual_path)
 
@@ -159,7 +159,7 @@ class ComparisonsAndRememberedDecisions(unittest.TestCase):
     def test_a_failed_fetch_is_a_silent_no_op(self):
         fetch = block(self.source, "private func latestUpdate() async", "private func fetch(")
         self.assertIn("print(", fetch)
-        self.assertIn("return nil", fetch)
+        self.assertIn("return last", fetch, "the read is reported to the caller, not thrown at the user")
         self.assertNotIn("alert", fetch.lower())
 
 
