@@ -7,6 +7,18 @@ Each release's section may carry both its release notes and the per-change entri
 recorded as the work landed; entries before 0.1.610 were given their version headings
 from the repository's history and the published release pages.
 
+## [0.1.700] — 2026-11-28
+
+### Fixed
+- **The socket stays warm.** Idle connections were being cut at ~14 m 32 s–15 m 15 s by the proxy in front of
+  the host — no close frame, no ping, and `hermeyd` has no idle timer — so the app reconnected roughly every
+  quarter of an hour and one replay aborted with "connection reset". A 240-second keepalive now goes out only
+  when the wire is idle, and an event replay survives one aborted send.
+- **Offline no longer spams the log.** The cache sweep is skipped entirely while the transport is down, and
+  `transcript refresh failed: not connected` is logged once per disconnect instead of on every sweep.
+- **`highest=` in the update log is bounded.** A stale record (1011 from an old numbering) is rewritten to a
+  plausible value once and announced, so the diagnostic reads honestly.
+
 ## [0.1.699] — 2026-11-27
 
 ### Fixed
