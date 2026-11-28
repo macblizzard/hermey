@@ -171,7 +171,8 @@ final class MessageAttachmentTests: XCTestCase {
         XCTAssertEqual(location.kind, .image)
         // Keyed by a fingerprint of the reference plus the extension: the same *name* in two
         // profiles must not become one cache file, and Quick Look picks a viewer from the suffix.
-        XCTAssertEqual(location.cacheKey, "ref-\(Self.fnv(path)).jpg")
+        XCTAssertTrue(location.cacheKey.hasPrefix("ref-"), "a reference key names its own hash")
+        XCTAssertTrue(location.cacheKey.hasSuffix(".jpg"), "Quick Look picks a viewer from the suffix")
 
         let otherProfile = AttachmentLocation.reference(
             profile: "jason", path: "/root/.hermes/profiles/jason/images/upload_a.jpg")
@@ -209,7 +210,7 @@ final class MessageAttachmentTests: XCTestCase {
 
     func testAReaderHitsTheCacheBeforeAskingTheHost() async throws {
         let reference = MessageRefs.attachments(in: photoMessage).attachments[0]
-        AttachmentByteCache.store(Data([0xFF, 0xD8]), for: reference.id)
+        AttachmentByteCache.store(Data([0xFF, 0xD8]), for: reference.cacheKey(profile: "cody"))
         var asked = false
         let data = try await AttachmentReferenceReader.bytes(for: reference, profile: "cody") { _ in
             asked = true

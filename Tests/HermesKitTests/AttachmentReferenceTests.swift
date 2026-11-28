@@ -33,7 +33,9 @@ final class AttachmentReferenceTests: XCTestCase {
         // The 2026-11 audit: a bare-name key made profile A's cached `notes.pdf` answer profile B's
         // reference. The key is profile + reference now, so two same-named files are two entries.
         let name = "/home/agent/.hermes/profiles/assistant/images/upload_shared.png"
+        let ownProfile = AttachmentLocation.reference(profile: profile, path: name).cacheKey
         let otherProfile = AttachmentLocation.reference(profile: "jason", path: name).cacheKey
+        AttachmentImageStore.save(Data([7, 7, 7]), as: ownProfile)
         AttachmentImageStore.save(Data([9]), as: otherProfile)
 
         let entry = TranscriptEntry(id: "2", role: .user, text: "@image:\(name)")

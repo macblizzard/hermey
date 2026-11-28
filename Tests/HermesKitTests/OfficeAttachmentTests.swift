@@ -91,10 +91,15 @@ final class OfficeAttachmentTests: XCTestCase {
 
     // MARK: The cache and the fetch
 
-    func testAnUploadIsCachedUnderTheHostsOwnName() {
+    func testAnUploadIsCachedUnderAKeyThatNamesItsProfile() {
         let location = AttachmentLocation.uploaded(profile: "cody", name: "report.pdf")
-        XCTAssertEqual(location.cacheKey, "report.pdf",
-                       "the transcript quotes this name; the cache must agree with it")
+        XCTAssertEqual(location.displayName, "report.pdf", "the transcript quotes this name")
+        XCTAssertTrue(location.cacheKey.hasPrefix("upload-"),
+                      "the key is a fingerprint of profile + name")
+        XCTAssertNotEqual(location.cacheKey, "report.pdf",
+                          "a bare-name key let one profile answer another's file")
+        XCTAssertNotEqual(location.cacheKey,
+                          AttachmentLocation.uploaded(profile: "jason", name: "report.pdf").cacheKey)
         XCTAssertEqual(location.kind, .pdf)
     }
 

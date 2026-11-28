@@ -890,7 +890,7 @@ mod tests {
     fn proxied_headers() -> HeaderMap {
         // One header is enough to prove the guard; `tailscale serve` sends several of them at once.
         let mut headers = HeaderMap::new();
-        headers.insert("x-forwarded-for", "100.64.0.9".parse().unwrap());
+        headers.insert("x-forwarded-for", "203.0.113.9".parse().unwrap());
         headers.insert("tailscale-user-login", "mo@example.com".parse().unwrap());
         headers
     }
