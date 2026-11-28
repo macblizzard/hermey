@@ -235,7 +235,9 @@ public final class UpdateChecker: ObservableObject {
     /// newest build would otherwise be indistinguishable from a stale feed and would silence a real
     /// release. What protects the screen from a stale document is the card that is *up* (see
     /// `settle`), which is live evidence rather than a remembered number.
-    /// `skippedBuild` counts too, so the record describes what this device answered.
+    /// `skippedBuild` counts too, so the record describes what this device answered. A check bounds
+    /// both against the document it just read (`plausibleHighest`), so the number in the log can
+    /// never claim a build newer than the feed named.
     public var highestOfferedBuild: Int {
         max(defaults.integer(forKey: DefaultsKey.highestOfferedBuild), skippedBuild ?? 0)
     }
@@ -340,7 +342,11 @@ public final class UpdateChecker: ObservableObject {
             lastCheck = now
         }
 
-        let floor = highestOfferedBuild
+        // The record the log prints, bounded by the newest build this check actually saw. A value
+        // from an older feed (1011 beside a document at 700) reads as corruption and describes
+        // nothing, so it is rewritten to the running build and reported as such. Still no gate:
+        // `settle` below decides the offer from the document and the install alone.
+        let floor = plausibleHighest(document: read.advertised?.build ?? read.installable?.build)
         // A manual press that joined this check rides on its answer: the join flag is consumed here,
         // once, before the decision — the offer is presented over Settings and a recorded skip does
         // not apply to it. `manual` alone still decides what the unsolicited check does.
@@ -569,10 +575,10 @@ public final class UpdateChecker: ObservableObject {
     ///
     /// It names the source that asked (launch, foreground or manual), the URL, what the transport
     /// did, the newest build the document advertised, the newest build this platform can install,
-    /// the build running here, the stored floor (recorded, never a gate — a value above
-    /// `advertised` here is the only evidence a refusal could ever have left), and the offer that
-    /// came of it or the reason there was none. One line from a phone settles "did it ask, what did
-    /// it read, and why did it say what it said" without another round trip.
+    /// the build running here, the stored record (bounded by the document, so it can never read as
+    /// a build newer than the feed named — see `plausibleHighest`), and the offer that came of it or
+    /// the reason there was none. One line from a phone settles "did it ask, what did it read, and
+    /// why did it say what it said" without another round trip.
     static func logCheck(_ read: FeedRead, installed: Int, source: String, offer: String, highest: Int) {
         let advertised = read.advertised.map { "\($0.build) (\($0.version))" } ?? "none"
         let installable = read.installable.map { String($0.build) } ?? "none"
@@ -589,6 +595,35 @@ public final class UpdateChecker: ObservableObject {
                        + "highest=\(highest) "
                        + "offer=\(offer)",
                        level: .info, category: "update")
+    }
+
+    /// The stored record, bounded by the newest build this check actually saw.
+    ///
+    /// `highestOfferedBuild` is a record, never a gate (nothing refuses a document because of it),
+    /// but a *stale* record is still wrong as a record: a leftover from an older feed printed
+    /// `highest=1011` beside `advertised=700`, which reads as a corrupted install and describes
+    /// nothing this device was ever offered. So the number this check prints — and leaves behind —
+    /// cannot exceed the newest build in the document just read (or the running build, when the
+    /// feed answered with nothing). When it did, the record is rewritten to the build running here
+    /// and one line says it was clamped. The key's meaning is unchanged: a diagnostic only.
+    ///
+    /// - Parameter document: the newest build the feed named this time, or nil when no document
+    ///   was read. A check that read nothing has no ceiling but the install, and that is used.
+    private func plausibleHighest(document: Int?) -> Int {
+        let recorded = highestOfferedBuild
+        let ceiling = max(document ?? 0, currentBuild)
+        guard recorded > ceiling else { return recorded }
+        let reset = currentBuild > 0 ? currentBuild : ceiling
+        defaults.set(reset, forKey: DefaultsKey.highestOfferedBuild)
+        // `skippedBuild` is the other half of that `max`, and it is the person's own answer — not
+        // ours to rewrite. So the report is bounded explicitly rather than trusting the stored
+        // value alone to have brought the max down.
+        let reported = min(max(defaults.integer(forKey: DefaultsKey.highestOfferedBuild),
+                               min(skippedBuild ?? 0, ceiling)),
+                           ceiling)
+        Self.note("update: highest record \(recorded) is above the newest build \(ceiling) this "
+                  + "device has seen; record set to \(reset), printing \(reported)")
+        return reported
     }
 
     /// Remember the build that was actually shown.

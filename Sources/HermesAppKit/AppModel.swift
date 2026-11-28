@@ -1158,10 +1158,30 @@ public final class AppModel: ObservableObject {
         unreadSweepTask = Task { [weak self] in
             while !Task.isCancelled {
                 guard let self else { return }
-                if self.connection.isLive { await self.loadBotPreviews() }
+                if await self.transportIsUp() { await self.loadBotPreviews() }
                 await self.noteWireSilence()
                 try? await Task.sleep(for: .seconds(Self.unreadSweepInterval))
             }
+        }
+    }
+
+    /// Whether the socket itself is up, not just whether this window's last report said it was.
+    ///
+    /// `connection` is this model's copy of the transport's state, updated from the socket's own
+    /// events; the copy is a frame behind whenever the wire dies. A sweep that lands in that frame
+    /// saw `connected` and woke a refresh whose only possible answer was "not connected" — that is
+    /// the pair of lines in the owner's log (`sweep saw a newer host message` above
+    /// `transcript refresh failed`), five times across an hour. The actor's `state` is written by
+    /// the pump that carries the close, so it is the authority: a disconnected transport is not
+    /// swept at all, which also stops the poll from spending a 25-second tick on a request that
+    /// cannot be sent.
+    private func transportIsUp() async -> Bool {
+        guard connection.isLive else { return false }
+        // `switch` rather than `if case … = await`: the actor's state is the authority, so it is
+        // read (and awaited) once, after the cheap local check.
+        switch await client.state {
+        case .open: return true
+        default: return false
         }
     }
 
@@ -1183,6 +1203,13 @@ public final class AppModel: ObservableObject {
     private var lastWireEventAt = Date()
     private var lastWireEventLabel = "none yet"
     private var silenceReported = false
+    /// Whether a failed transcript refresh has already been said on this connection.
+    ///
+    /// The same pattern as `silenceReported`: a socket that is down fails every sweep identically,
+    /// and five `transcript refresh failed: not connected` lines across an hour — each paired with
+    /// the sweep line that woke it — read as five faults instead of one dead wire. One line per
+    /// disconnect; `ready` clears it, because the next failure is news again.
+    private var refreshFailureNoted = false
     /// Whether the read that a stall earns has already been asked for. One per stall: a frame clears
     /// it, so the next silence may ask again, but a host that is quiet for an hour is not polled.
     private var silenceReadBack = false
@@ -1494,6 +1521,11 @@ public final class AppModel: ObservableObject {
         pendingOpenRefresh = Task { [weak self] in
             try? await Task.sleep(nanoseconds: 400_000_000)
             guard let self else { return }
+            // The event that scheduled this read may have been the last one the socket carried.
+            guard await self.transportIsUp() else {
+                self.pendingOpenRefresh = nil
+                return
+            }
             let read = await self.refreshTranscript(sid)
             if !read {
                 // The id on screen does not resolve any more: the host moved this bot's
@@ -1513,7 +1545,10 @@ public final class AppModel: ObservableObject {
     /// banner moved on (reported 2026-11-16). The refresh is in place: it neither clears the pane nor
     /// drops the pages already loaded, and `adoptResume` merges.
     private func reconcileOpenChatWithHost() async {
-        guard let bot = selectedBotID, let sid = selectedSessionID, connection.isLive,
+        // The transport first: a refresh woken while the socket is down can only fail, and the
+        // failure is a line in the log for a fault already recorded. See `transportIsUp`.
+        guard await transportIsUp(),
+              let bot = selectedBotID, let sid = selectedSessionID,
               !isStreaming, !sending, !isCompressing,
               !draftSessionIDs.contains(sid),
               latestHostStamp(for: bot) > (transcriptHostStamp[bot] ?? .distantPast) else { return }
@@ -2865,8 +2900,14 @@ public final class AppModel: ObservableObject {
                                + "host which conversation \(selectedBotID ?? "this bot") owns now",
                                level: .info, category: "session")
             } else {
-                ClientLog.note("transcript refresh failed: \(error.localizedDescription)",
-                               level: .warning, category: "connection")
+                // One line per disconnect: a sweep that lands while the socket is down fails the
+                // same way every 25 seconds, and repeating that turned one dead wire into five
+                // warnings, each paired with the sweep line that woke it.
+                if !refreshFailureNoted {
+                    refreshFailureNoted = true
+                    ClientLog.note("transcript refresh failed: \(error.localizedDescription)",
+                                   level: .warning, category: "connection")
+                }
             }
             return false
         }
@@ -6336,6 +6377,9 @@ public final class AppModel: ObservableObject {
         switch event {
         case .ready:
             connection = .connected
+            // The wire is back, so a refresh that fails from here is news again rather than the
+            // same dead socket said twice.
+            refreshFailureNoted = false
             // A session that could not be opened while the socket was down has been opened again
             // by the resume on `ready`; the sentence about it is stale the moment the wire is up.
             if lastSendError?.hasPrefix("could not open this session") == true {

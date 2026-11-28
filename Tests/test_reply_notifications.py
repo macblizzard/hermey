@@ -66,7 +66,12 @@ class TheDecisionLivesInOnePlace(unittest.TestCase):
         self.assertIn("public static let unreadSweepInterval", MODEL)
         sweep = MODEL.split("public func startUnreadSweep()", 1)[1].split("\n    }", 1)[0]
         self.assertIn("loadBotPreviews()", sweep)
-        self.assertIn("connection.isLive", sweep, "a dead socket must not be polled")
+        # A dead socket must not be polled — and the sweep asks the transport itself, because this
+        # window's copy of its state is a frame behind the close (`transportIsUp`, which starts from
+        # `connection.isLive` and then reads the actor's own `.open`).
+        self.assertIn("await self.transportIsUp()", sweep,
+                      "a dead socket must not be polled")
+        self.assertIn("connection.isLive", MODEL.split("private func transportIsUp()", 1)[1])
         # Started by both doors into the wire, and stopped with it.
         self.assertIn("startUnreadSweep()\n        } catch", MODEL)
         self.assertIn("startUnreadSweep()\n            //", MODEL)

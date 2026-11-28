@@ -151,9 +151,13 @@ class TheStoredBuildIsARecordNeverAVeto(unittest.TestCase):
                          "the skip applies to exactly one build, and only to an unsolicited check")
 
     def test_the_floor_is_read_once_for_the_log_and_never_for_a_decision(self):
-        self.assertEqual(self.check.count("highestOfferedBuild"), 1)
+        # The value printed is the record *bounded by the document just read* (`plausibleHighest`),
+        # so the raw property does not appear in `check` at all — but it is still only ever read to
+        # be printed, and `settle` above is where the offer is decided.
+        self.assertEqual(self.check.count("highestOfferedBuild"), 0)
+        self.assertEqual(self.check.count("plausibleHighest("), 1)
         for line in self.check.splitlines():
-            if "highestOfferedBuild" in line:
+            if "plausibleHighest" in line:
                 self.assertIn("let floor =", line,
                               "the only read is the value the log line prints")
         self.assertIn("highest: floor", self.check)

@@ -63,6 +63,23 @@ public actor GatewayClient: GatewayClientProtocol {
 
     // MARK: - Tuning
 
+    /// How long an open socket may carry no frame at all before the client asks it something.
+    ///
+    /// The gateway relays one socket between the phone and the host with no application traffic on
+    /// it at all when nobody is typing: `client.capabilities` at the handshake, then silence. In
+    /// the owner's log a socket that lived through such a silence was closed at 14 m 32 s, 14 m 42 s
+    /// and 15 m 15 s — two devices, three sockets, one ~15-minute ceiling — and the relay recorded
+    /// every one as an abnormal termination (`client read error: … Connection reset without closing
+    /// handshake`), not as a close either endpoint asked for. Fifteen minutes is the classic idle
+    /// cutoff of a proxy or a NAT, and the hop in front of `hermeyd` (`tailscale serve`) is not ours
+    /// to configure; a question every four minutes is. `ping` is the gateway's cheapest method — it
+    /// answers `{"pong": true}` without touching the session database — so a keepalive costs four
+    /// bytes a minute and removes the idle window entirely.
+    ///
+    /// Four minutes, not sixty seconds: anything under the ~15-minute cutoff stops the close, and
+    /// the point is to be invisible on a phone's battery and data, not to poll the host.
+    public static let keepaliveInterval: TimeInterval = 240
+
     public struct Timeouts: Sendable, Equatable {
         /// How long one `session.resume` may take before the client stops waiting for it.
         ///
@@ -171,6 +188,11 @@ public actor GatewayClient: GatewayClientProtocol {
     private var reconnectTask: Task<Void, Never>?
     private var reconnectGeneration = 0
     private var isIntentionalDisconnect = false
+    /// The idle keepalive, alive only while a socket is open (see `keepaliveInterval`).
+    private var keepaliveTask: Task<Void, Never>?
+    /// When a frame last crossed this connection in either direction. A keepalive tick that finds
+    /// this fresh says nothing: a socket carrying a streaming turn is not idle.
+    private var lastTrafficAt = Date()
 
     private var sawReady = false
     private var readySignal: OneShotSignal<Void>?
@@ -283,6 +305,7 @@ public actor GatewayClient: GatewayClientProtocol {
         reconnectTask?.cancel()
         reconnectTask = nil
         reconnectGeneration += 1
+        stopKeepalive()
         failAllPending(GatewayError.transportClosed("client closed"))
         failReady(GatewayError.transportClosed("client closed"))
         await dropConnection(reason: "client closed")
@@ -1345,6 +1368,7 @@ public actor GatewayClient: GatewayClientProtocol {
             throw error
         }
         setState(.open)
+        startKeepalive()
     }
 
     /// Wait for a socket that is **already dialed** to finish its handshake, without touching
@@ -1447,6 +1471,7 @@ public actor GatewayClient: GatewayClientProtocol {
     }
 
     private func handle(_ frame: IncomingFrame) async {
+        lastTrafficAt = Date()
         switch frame {
         case .response(let id, let result, let error):
             if let error {
@@ -1639,6 +1664,7 @@ public actor GatewayClient: GatewayClientProtocol {
         let line = try JSONRPCCodec.encodeToString(RPCRequest(id: id, method: method, params: params))
         do {
             try await transport.send(text: line)
+            lastTrafficAt = Date()
         } catch {
             throw GatewayError.transportClosed("send failed: \(error)")
         }
@@ -1692,6 +1718,9 @@ public actor GatewayClient: GatewayClientProtocol {
         connectionGeneration += 1
         pump?.cancel()
         pump = nil
+        // A new dial owns the keepalive from here; the old socket's tick must not ping the new one
+        // before its handshake has finished.
+        stopKeepalive()
         // Never drop a live socket on the floor: a released `URLSessionWebSocketTask` is closed by
         // the OS as 1001 "client closed" while the gateway still believes it is attached, so a turn
         // in flight streams into nothing. Close it deliberately — the bytes cost nothing and the
@@ -1720,6 +1749,7 @@ public actor GatewayClient: GatewayClientProtocol {
         failReady(GatewayError.transportClosed(reason))
         failAllPending(GatewayError.transportClosed(reason))
         transport = nil
+        stopKeepalive()
         // `openServerRequests` deliberately survives: the agent is still blocked on those questions,
         // and the resume after the reconnect reconciles them (delivering the ones this app has not
         // seen, tearing down the ones the backend no longer waits on).
@@ -1801,7 +1831,8 @@ public actor GatewayClient: GatewayClientProtocol {
             return
         }
         do {
-            let replay = try await eventReplay(session: resumed.runtimeID, lastSeen: watermark.seq)
+            let replay = try await replaySurvivingOneAbort(session: resumed.runtimeID,
+                                                           lastSeen: watermark.seq)
             if replay.truncated || (replay.epoch != epoch && !replay.epoch.isEmpty) {
                 yield(.sessionUpdated(resumed.runtimeID))
                 return
@@ -1822,6 +1853,81 @@ public actor GatewayClient: GatewayClientProtocol {
                                                         "last_seen": .int(Int64(lastSeen))]),
                                        timeout: timeouts.call)
         return try GatewayPayloadDecoder.eventReplay(result)
+    }
+
+    /// `session.events.since` once, retried once when the send itself was aborted.
+    ///
+    /// The replay is the first call on a socket that was just dialled, and the owner's log has the
+    /// case where the write of that call died on the new socket
+    /// (`event replay failed: transportClosed("Software caused connection abort")`, errno 53) — the
+    /// old path aborting just as the replacement came up. One retry turns that into a patched
+    /// transcript; without it the app is told to reload a whole conversation because one frame was
+    /// lost. A second failure is reported exactly as before, because a reload is the honest answer
+    /// when the socket will not carry the question.
+    private func replaySurvivingOneAbort(session: SessionID,
+                                         lastSeen: Int) async throws -> GatewayPayloadDecoder.EventReplay {
+        do {
+            return try await eventReplay(session: session, lastSeen: lastSeen)
+        } catch let error as GatewayError {
+            guard Self.isAbortedSend(error) else { throw error }
+            try? await Task.sleep(nanoseconds: 250_000_000)
+            return try await eventReplay(session: session, lastSeen: lastSeen)
+        }
+    }
+
+    /// Failures that mean "this write never left the socket", as opposed to an answer.
+    static func isAbortedSend(_ error: GatewayError) -> Bool {
+        switch error {
+        case .notConnected, .transportClosed: return true
+        default: return false
+        }
+    }
+
+    // MARK: - Idle keepalive
+
+    /// Start asking an otherwise silent socket whether anyone is still there.
+    ///
+    /// One task per open connection, cancelled by `beginConnection`, `connectionLost` and
+    /// `disconnect` — the three ways a socket stops existing. It sleeps first: the handshake has
+    /// just carried frames, so the first tick is only due after a whole idle interval.
+    private func startKeepalive() {
+        stopKeepalive()
+        lastTrafficAt = Date()
+        keepaliveTask = Task { [weak self] in
+            while !Task.isCancelled {
+                try? await Task.sleep(nanoseconds: Self.nanoseconds(Self.keepaliveInterval))
+                if Task.isCancelled { return }
+                guard let self else { return }
+                await self.keepaliveTick()
+            }
+        }
+    }
+
+    private func stopKeepalive() {
+        keepaliveTask?.cancel()
+        keepaliveTask = nil
+    }
+
+    /// One idle check. Silent when the socket is not open or has carried a frame inside the last
+    /// interval; otherwise one `ping`, so no proxy or NAT in the middle gets a whole idle window to
+    /// close the connection in (see `keepaliveInterval`).
+    private func keepaliveTick() async {
+        guard case .open = stateBox.current, sawReady else { return }
+        // A call already waiting on a slow host is not idleness: a `session.resume` holds the
+        // engine's projection for seconds (measured 6.2 s, more under load) and a ping queued behind
+        // one would time out into a drop of a socket that is working. There is nothing to keep warm
+        // while something is on the wire anyway.
+        guard pending.isEmpty, resumeFlights.isEmpty else { return }
+        guard Date().timeIntervalSince(lastTrafficAt) >= Self.keepaliveInterval else { return }
+        do {
+            _ = try await perform("ping", params: .object([:]), timeout: timeouts.call)
+        } catch {
+            // The socket could not carry a four-byte question: it is dead whatever the state box
+            // still says. Hand it to the same path a transport failure takes, so the reconnect
+            // ladder (and its `reconnecting` line) does the talking.
+            guard case .open = stateBox.current else { return }
+            _ = connectionLost(reason: "keepalive failed: \(error)")
+        }
     }
 
     private func performResume(_ id: SessionID, profile: String?) async throws -> GatewayPayloadDecoder.Resume {
