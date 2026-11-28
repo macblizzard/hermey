@@ -22,14 +22,14 @@
       "screenshots": [],
       "versions": [
         {
-          "version": "0.1.698",
-          "buildVersion": "698",
-          "date": "2026-11-27T22:19:28Z",
-          "localizedDescription": "Every real defect from the feature audit, fixed: voice barge-in no longer storms and the reply is spoken for the right turn; a picture sent from one device now appears on the other after a paged resume; Send cannot double-fire; the update feed no longer dies when a hermeyd release is newest and host Try again works; pairing can no longer be minted through the tailscale proxy; the desktop pet's avatar animates and glass bodies shrink under marks. Needs hermeyd 0.8.28.",
-          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.698/Hermey-0.1.698-b698.ipa",
-          "size": 6390576,
+          "version": "0.1.700",
+          "buildVersion": "700",
+          "date": "2026-11-28T10:23:46Z",
+          "localizedDescription": "### Fixed\n- **The socket stays warm.** Idle connections were being cut at ~14 m 32 s\u201315 m 15 s by the proxy in front of\n  the host \u2014 no close frame, no ping, and `hermeyd` has no idle timer \u2014 so the app reconnected roughly every\n  quarter of an hour and one replay aborted with \"connection reset\". A 240-second keepalive now goes out only\n  when the wire is idle, and an event replay survives one aborted send.\n- **Offline no longer spams the log.** The cache sweep is skipped entirely while the transport is down, and\n  `transcript refresh failed: not connected` is logged once per disconnect instead of on every sweep.\n- **`highest=` in the update log is bounded.** A stale record (1011 from an old numbering) is rewritten to a\n  plausible value once and announced, so the diagnostic reads honestly.",
+          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.700/Hermey-0.1.700-b700.ipa",
+          "size": 6479477,
           "minOSVersion": "17.0",
-          "sha256": "5897ce7fc67dc1b224e4263a8934d08a86c63aa7e2908c4cc2449dbbcdde4b0d"
+          "sha256": "0cd5a3da2aa12b2ad25424dee9191704ca321e5fddfeafb7fee427b5ea56fa4a"
         }
       ],
       "appPermissions": {
@@ -43,10 +43,10 @@
   ],
   "news": [
     {
-      "title": "Hermes 0.1.698 (698)",
-      "identifier": "hermes-0.1.698-698",
-      "caption": "Every real defect from the feature audit, fixed: voice barge-in no longer storms and the reply is spoken for the right turn; a picture sent from one device now appears on the other after a paged resume; Send cannot double-fire; the update feed no longer dies when a hermeyd release is newest and host Try again works; pairing can no longer be minted through the tailscale proxy; the desktop pet's avatar animates and glass bodies shrink under marks. Needs hermeyd 0.8.28.",
-      "date": "2026-11-27T22:19:28Z",
+      "title": "Hermes 0.1.700 (700)",
+      "identifier": "hermes-0.1.700-700",
+      "caption": "### Fixed\n- **The socket stays warm.** Idle connections were being cut at ~14 m 32 s\u201315 m 15 s by the proxy in front of\n  the host \u2014 no close frame, no ping, and `hermeyd` has no idle timer \u2014 so the app reconnected roughly every\n  quarter of an hour and one replay aborted with \"connection reset\". A 240-second keepalive now goes out only\n  when the wire is idle, and an event replay survives one aborted send.\n- **Offline no longer spams the log.** The cache sweep is skipped entirely while the transport is down, and\n  `transcript refresh failed: not connected` is logged once per disconnect instead of on every sweep.\n- **`highest=` in the update log is bounded.** A stale record (1011 from an old numbering) is rewritten to a\n  plausible value once and announced, so the diagnostic reads honestly.",
+      "date": "2026-11-28T10:23:46Z",
       "tintColor": "#9A9AA0"
     }
   ],
